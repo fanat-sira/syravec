@@ -83,7 +83,7 @@ jobs:
           import zipfile
           names = ['Пазлы','Книга','Телефон','Наушники','Лампа','Кошелек','Ручка','Папка','Монета']
           names = names + [n+'-1' for n in names] + ['Group 2136136344','Group 2136136347','Фон','Фон-1','Фон-2']
-          with zipfile.ZipFile('originals/Тестовое _ иллюстрации(2).zip', 'w') as archive:
+          with zipfile.ZipFile('originals/assets.zip', 'w') as archive:
               for name in names:
                   archive.writestr(name+'.svg', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path fill="#7864d7" d="M0 0h100v100H0Z"/></svg>')
           PY

@@ -236,7 +236,7 @@ export default function App() {
       } catch {
         if (!cancelled) {
           setLoadError(
-            "библиотека SVG недоступна. положи исходный архив в originals/Тестовое _ иллюстрации(2).zip и выполни sudo docker compose up --build -d. подробности — в README.",
+            "библиотека SVG недоступна. положи исходный архив в originals/assets.zip и выполни sudo docker compose up --build -d. подробности — в README.",
           );
           setLoading(false);
         }

@@ -43,7 +43,7 @@ jobs:
           docker compose version
           test -d "$DEPLOY_DIR" && test -w "$DEPLOY_DIR" || { echo 'create /opt/syravec and grant the runner user write access (see README)'; exit 1; }
           test -r "$DEPLOY_DIR/.env" || { echo 'create /opt/syravec/.env (may be empty without AI)'; exit 1; }
-          test -r "$DEPLOY_DIR/originals/Тестовое _ иллюстрации(2).zip" || { echo 'provide /opt/syravec/originals/Тестовое _ иллюстрации(2).zip'; exit 1; }
+          test -r "$DEPLOY_DIR/originals/assets.zip" || { echo 'provide /opt/syravec/originals/assets.zip'; exit 1; }
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io

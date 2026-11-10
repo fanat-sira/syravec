@@ -2,10 +2,10 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync, copyFileSync, readdirSync, renameSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-const archive = process.env.SOURCE_ARCHIVE || 'originals/Тестовое _ иллюстрации(2).zip';
+const archive = process.env.SOURCE_ARCHIVE || 'originals/assets.zip';
 const output = process.env.ASSET_OUTPUT_ROOT || 'web/public';
 if (!existsSync(archive)) {
- console.error(`\nSyraVec: исходный архив SVG не найден: ${archive}\nОригинальные иллюстрации не публикуются в Git. Получи исходный архив отдельно\nи положи его в originals/Тестовое _ иллюстрации(2).zip рядом с compose.yaml.\nЗатем повтори: sudo docker compose up --build -d\nИнтерфейс не запускается, пока библиотека не подготовлена.\n`);
+ console.error(`\nSyraVec: исходный архив SVG не найден: ${archive}\nОригинальные иллюстрации не публикуются в Git. Получи исходный архив отдельно\nи положи его в originals/assets.zip рядом с compose.yaml.\nЗатем повтори: sudo docker compose up --build -d\nИнтерфейс не запускается, пока библиотека не подготовлена.\n`);
  process.exit(1);
 }
 

@@ -23,7 +23,7 @@ test ! -f "$DEPLOY_TEST_LOG"
 : > .env
 if sh "$repo/scripts/deploy.sh" > "$test_root/output" 2>&1; then exit 1; fi
 test ! -f "$DEPLOY_TEST_LOG"
-: > 'originals/Тестовое _ иллюстрации(2).zip'
+: > 'originals/assets.zip'
 printf 'old\n' > .deployed-tag
 # New release fails; previous tag is restored and recorded tag is preserved.
 if FAIL_NEW_RELEASE=1 sh "$repo/scripts/deploy.sh" > "$test_root/output" 2>&1; then exit 1; fi
