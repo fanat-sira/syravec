@@ -93,6 +93,7 @@ jobs:
           curl -fsS http://127.0.0.1:3000/api/v1/health
           curl -fsS http://127.0.0.1:3000/assets/manifest.json
           curl -fsS http://127.0.0.1:3000/assets/book-main.svg
+          python3 scripts/check-web-assets.py http://127.0.0.1:3000
       - name: Container logs
         if: always()
         run: docker compose logs
