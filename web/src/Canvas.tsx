@@ -6,7 +6,14 @@ import {
   useLayoutEffect,
   type PointerEvent,
 } from "react";
-import { type Scene, type Layer, type Asset, size, transform } from "./model";
+import {
+  type Scene,
+  type Layer,
+  type Asset,
+  size,
+  transform,
+  uid,
+} from "./model";
 import { markup, paletteFor, backgroundMarkup } from "./svg";
 interface Props {
   scene: Scene;
@@ -211,6 +218,9 @@ export function Canvas({
     distance: number;
     angle: number;
     latest: Layer;
+    duplicate: boolean;
+    moved: boolean;
+    screenStart: { x: number; y: number };
   } | null>(null);
   const p = paletteFor(scene),
     { width: w, height: h } = scene.canvas;
@@ -225,16 +235,21 @@ export function Canvas({
     if (e.button !== 0) return;
     e.stopPropagation();
     select(l.id);
-    if (l.locked) return;
+    if (l.locked || (kind === "move" && e.altKey && scene.layers.length >= 40))
+      return;
     e.preventDefault();
     const pt = local(e),
       dx = pt.x - l.x * w,
       dy = pt.y - l.y * h;
+    const duplicate = kind === "move" && e.altKey;
     drag.current = {
       kind,
       start: pt,
-      layer: { ...l },
+      layer: { ...l, id: duplicate ? uid() : l.id },
       latest: l,
+      duplicate,
+      moved: false,
+      screenStart: { x: e.clientX, y: e.clientY },
       distance: Math.max(1, Math.hypot(dx, dy)),
       angle: Math.atan2(dy, dx),
     };
@@ -243,6 +258,12 @@ export function Canvas({
   function move(e: PointerEvent) {
     const d = drag.current;
     if (!d) return;
+    if (
+      !d.moved &&
+      Math.hypot(e.clientX - d.screenStart.x, e.clientY - d.screenStart.y) < 3
+    )
+      return;
+    d.moved = true;
     const pt = local(e),
       l = { ...d.layer };
     if (d.kind === "move") {
@@ -271,6 +292,12 @@ export function Canvas({
     if (!d) return;
     drag.current = null;
     setDraft(null);
+    if (!d.moved) return;
+    if (d.duplicate) {
+      change({ ...scene, layers: [...scene.layers, d.latest] });
+      select(d.latest.id);
+      return;
+    }
     if (JSON.stringify(d.latest) !== JSON.stringify(d.layer))
       change({
         ...scene,
@@ -339,7 +366,10 @@ export function Canvas({
             <g clipPath="url(#canvas-clip)">
               <rect width={w} height={h} fill={p.light} />
               {bg && <g dangerouslySetInnerHTML={{ __html: bg }} />}
-              {scene.layers
+              {(draft && drag.current?.duplicate
+                ? [...scene.layers, draft]
+                : scene.layers
+              )
                 .filter((l) => l.visible)
                 .map((original) => {
                   const l = draft?.id === original.id ? draft : original,
@@ -353,6 +383,7 @@ export function Canvas({
                       transform={transform(scene, l, asset)}
                       onPointerDown={(e) => start(e, l)}
                       style={{ cursor: l.locked ? "not-allowed" : "grab" }}
+                      data-layer-id={l.id}
                     >
                       <rect
                         x={asset.viewBox[0]}

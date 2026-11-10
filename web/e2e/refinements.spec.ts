@@ -4,44 +4,6 @@ test.beforeEach(async ({ page }) => {
     r.fulfill({ json: { status: "ok", aiConfigured: false } }),
   );
 });
-test("фокус расширяет тот же чат на высоту холста, элементы управления под вводом", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: /знания открывают двери/ }).click();
-  const chat = page.locator(".chat-history"),
-    composer = page.locator(".composer"),
-    main = page.locator(".main-shell");
-  const input = (await composer.boundingBox())!,
-    controls = (await page.locator(".composer-control-row").boundingBox())!,
-    messages = (await chat.boundingBox())!;
-  expect(messages.y + messages.height).toBeLessThan(input.y);
-  expect(controls.y).toBeGreaterThanOrEqual(input.y + input.height);
-  expect(
-    await page
-      .locator(".conversation")
-      .evaluate((el) => getComputedStyle(el).scrollbarColor),
-  ).toBe("rgba(0, 0, 0, 0) rgba(0, 0, 0, 0)");
-  const bounds = await page.locator(".canvas-area").boundingBox();
-  await page
-    .getByRole("button", { name: "история генераций", exact: true })
-    .click();
-  const focused = (await chat.boundingBox())!,
-    frame = (await main.boundingBox())!;
-  expect(focused.y).toBeCloseTo(frame.y + 12, 0);
-  expect(focused.y + focused.height).toBeCloseTo(input.y - 8, 0);
-  expect(await chat.evaluate((el) => getComputedStyle(el).boxShadow)).toBe(
-    "none",
-  );
-  expect(await chat.evaluate((el) => getComputedStyle(el).maskImage)).toBe(
-    "none",
-  );
-  expect(await page.locator(".canvas-area").boundingBox()).toEqual(bounds);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.screenshot({ path: "../artifacts/chat-focus.png" });
-  await page.getByRole("button", { name: "закрыть историю генераций" }).click();
-  await expect(chat).not.toHaveClass(/is-focused/);
-});
 test("слои не меняют высоту при выделении и ширину при появлении скролла", async ({
   page,
 }) => {
@@ -121,9 +83,7 @@ test("экспорт сверху, инструменты вида справа 
   await expect(
     page.getByRole("combobox", { name: "способ сборки" }),
   ).toBeVisible();
-  await expect(
-    page.locator(".composer-control-row .ai-controls"),
-  ).toBeVisible();
+  await expect(page.locator(".composer .ai-controls")).toBeVisible();
   await page.getByRole("button", { name: "параметры генерации" }).click();
   await page.getByRole("button", { name: "текущий масштаб" }).click();
   await page.getByRole("menuitem", { name: "150%", exact: true }).click();

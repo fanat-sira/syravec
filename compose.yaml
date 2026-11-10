@@ -19,9 +19,12 @@ services:
       AI_GUARD_ENABLED: ${AI_GUARD_ENABLED:-true}
       AI_GUARD_MODEL: ${AI_GUARD_MODEL:-openai/gpt-6-luna-decisions}
       AI_GUARD_URL: ${AI_GUARD_URL:-https://openrouter.ai/api/alpha/decisions}
+      AI_USAGE_PATH: /app/data/ai-usage.json
+      AI_TRUST_PROXY: "true"
       CATALOG_PATH: /app/assets/manifest.json
     volumes:
       - assets:/app/assets:ro
+      - api-data:/app/data
     depends_on:
       assets:
         condition: service_completed_successfully
@@ -53,3 +56,4 @@ services:
     restart: unless-stopped
 volumes:
   assets:
+  api-data:

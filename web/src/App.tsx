@@ -7,24 +7,20 @@ import {
   Download,
   PanelLeftClose,
   PanelLeftOpen,
-  MessageSquare,
   Layers,
   Shapes,
   Undo2,
   Redo2,
   Trash2,
-  Upload,
   X,
   LoaderCircle,
-  Sparkles,
   SlidersHorizontal,
   Minus,
-  Maximize2,
-  Minimize2,
   Scan,
   ChevronDown,
   Pencil,
   Check,
+  Square,
 } from "lucide-react";
 import { useStore } from "./store";
 import {
@@ -71,12 +67,11 @@ export default function App() {
     [loading, setLoading] = useState(true),
     [loadError, setLoadError] = useState("");
   const [prompt, setPrompt] = useState(""),
-    [mode, setMode] = useState<"concept" | "selection">("concept"),
-    [picked, setPicked] = useState<string[]>([]),
     [planner, setPlanner] = useState<"template" | "llm">("template"),
     [ai, setAi] = useState(false),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState(""),
+    [composerError, setComposerError] = useState(""),
     [library, setLibrary] = useState(true),
     [libraryRequest, setLibraryRequest] = useState(0),
     [zoom, setZoom] = useState(100),
@@ -84,17 +79,14 @@ export default function App() {
     [sidebar, setSidebar] = useState(() => window.innerWidth > 760),
     [settings, setSettings] = useState(false),
     [inspectorOpen, setInspectorOpen] = useState(false),
-    [historyOpen, setHistoryOpen] = useState(false),
     [zoomOpen, setZoomOpen] = useState(false),
     [renaming, setRenaming] = useState<string | null>(null),
     [renameText, setRenameText] = useState(""),
     [deleting, setDeleting] = useState<string | null>(null);
-  const conversationRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null),
     stackRef = useRef<HTMLDivElement>(null),
     zoomMenuRef = useRef<HTMLDivElement>(null),
     aiSettingsRef = useRef<HTMLDivElement>(null);
-  const [historyHeight, setHistoryHeight] = useState(0);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const inEditor = !!project;
   const activeProject = useRef(st.current);
@@ -108,11 +100,9 @@ export default function App() {
   }, [st.current]);
   function resetComposer() {
     controller.current?.abort();
-    setPicked([]);
     setPrompt("");
-    setMode("concept");
+    setComposerError("");
     setSettings(false);
-    setHistoryOpen(false);
     setZoomOpen(false);
     setZoom(100);
     setViewReset((v) => v + 1);
@@ -132,14 +122,6 @@ export default function App() {
           "--dock-space",
           `${main.getBoundingClientRect().bottom - dock.getBoundingClientRect().top + 20}px`,
         );
-      setHistoryHeight(
-        Math.max(
-          0,
-          stack.getBoundingClientRect().top -
-            main.getBoundingClientRect().top -
-            20,
-        ),
-      );
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -189,7 +171,6 @@ export default function App() {
   const controller = useRef<AbortController | null>(null),
     fileRef = useRef<HTMLInputElement>(null),
     paletteRef = useRef<HTMLInputElement>(null),
-    projectRef = useRef<HTMLInputElement>(null),
     seed = useRef(Math.floor(Math.random() * 1_000_000));
   const assets = useMemo(
     () => [...catalog, ...st.customAssets],
@@ -197,18 +178,9 @@ export default function App() {
   );
   const selected = scene.layers.find((l) => l.id === st.selected);
   useEffect(() => {
-    const chat = conversationRef.current;
-    if (chat) chat.scrollTop = chat.scrollHeight;
-  }, [
-    project?.id,
-    project?.messages.length,
-    project?.generations?.length,
-    historyOpen,
-  ]);
-  useEffect(() => {
     const failed = () =>
       setNotice(
-        "не удалось сохранить изменения в браузере, скачай проект json",
+        "не удалось сохранить изменения в браузере; экспортируй SVG, чтобы сохранить композицию",
       );
     window.addEventListener("syravec-storage-error", failed);
     return () => window.removeEventListener("syravec-storage-error", failed);
@@ -295,7 +267,6 @@ export default function App() {
       }
       if (e.key === "Escape") {
         st.select(null);
-        setHistoryOpen(false);
         setSettings(false);
         setZoomOpen(false);
         setInspectorOpen(false);
@@ -351,124 +322,74 @@ export default function App() {
   function format(preset: Scene["canvas"]["preset"]) {
     change(adaptFormat(scene, preset, assets));
   }
-  async function generate(text = prompt, ids = picked) {
+  async function generate(text = prompt) {
     if (busy || loading) return;
-    if (mode === "concept" && !text.trim()) {
-      setNotice("расскажи, что собрать");
+    if (!text.trim()) {
+      promptRef.current?.focus();
       return;
     }
-    if (mode === "selection" && !ids.length) {
-      openLibrary();
-      setNotice("выбери объекты в библиотеке");
-      return;
-    }
-    st.message(
-      "user",
-      text.trim() || "собери композицию из выбранных объектов",
-    );
+    st.message("user", text.trim());
     const before = useStore.getState();
     const revision = before.revision,
       current = before.current,
       snapshot = before.projects.find((p) => p.id === current)!.scene;
     activeProject.current = current;
-    const generationId = uid();
-    let generationSource: "llm" | "fallback" =
-      planner === "llm" ? "llm" : "fallback";
-    const record = (values: Partial<import("./model").Generation>) =>
-      st.recordGeneration(current!, {
-        id: generationId,
-        prompt: text.trim() || "из выбранных объектов",
-        mode,
-        source: generationSource,
-        createdAt: Date.now(),
-        status: "error",
-        ...values,
-      });
-    setPrompt("");
+    setComposerError("");
     setBusy(true);
+    setSettings(false);
     const ac = new AbortController();
     controller.current = ac;
     try {
-      let result: Scene;
-      if (
-        mode === "selection" &&
-        ids.some((id) => st.customAssets.some((a) => a.id === id))
-      ) {
-        if (planner === "llm")
-          throw Error(
-            "для своих svg выбери шаблонную сборку, ai использует исходный каталог",
-          );
-        result = arrange(ids, snapshot, seed.current++, assets);
-        generationSource = "fallback";
-      } else {
-        const r = await fetch("/api/v1/compositions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: ac.signal,
-          body: JSON.stringify({
-            mode,
-            prompt: text,
-            assetIds: mode === "selection" ? ids : [],
-            palette: snapshot.palette,
-            paletteColors: Object.fromEntries(
-              ["strong", "medium", "light", "highlight", "pink", "soft"].map(
-                (key) => [
-                  key,
-                  paletteFor(snapshot)[
-                    key as keyof ReturnType<typeof paletteFor>
-                  ],
+      const r = await fetch("/api/v1/compositions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: ac.signal,
+        body: JSON.stringify({
+          mode: "auto",
+          prompt: text.trim(),
+          assetIds: [],
+          palette: snapshot.palette,
+          paletteColors: Object.fromEntries(
+            ["strong", "medium", "light", "highlight", "pink", "soft"].map(
+              (key) => [
+                key,
+                paletteFor(snapshot)[
+                  key as keyof ReturnType<typeof paletteFor>
                 ],
-              ),
+              ],
             ),
-            canvasPreset: snapshot.canvas.preset,
-            seed: seed.current++,
-            planner,
-          }),
-        });
-        const data = await r.json();
-        if (!r.ok) {
-          if (
-            ["prompt_rejected", "prompt_uncertain"].includes(
-              data.error?.code,
-            ) &&
-            useStore.getState().current === current
-          )
-            setPrompt((draft) => draft || text);
-          throw Error(data.error?.message || "не удалось собрать композицию");
-        }
-        const { validateProject } = await import("./validate");
-        result = validateProject(
-          { scene: { ...data.scene, customPalette: snapshot.customPalette } },
-          assets,
-        );
-        generationSource = data.generation.source;
-        const warnings = data.generation.warnings?.filter(
-          (w: string) => w !== "шаблонная раскладка, без ai",
-        );
-        if (warnings?.length) setNotice(warnings.join(" · "));
-      }
-      record({ status: "success", scene: result });
+          ),
+          canvasPreset: snapshot.canvas.preset,
+          seed: seed.current++,
+          planner,
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok)
+        throw Error(data.error?.message || "не удалось собрать композицию");
+      const { validateProject } = await import("./validate");
+      const result = validateProject(
+        { scene: { ...data.scene, customPalette: snapshot.customPalette } },
+        assets,
+      );
       const now = useStore.getState();
       if (now.revision !== revision || now.current !== current) {
-        setNotice(
-          "композиция изменилась во время сборки, новый ответ не применен",
-        );
+        if (now.current === current)
+          setComposerError(
+            "композиция изменилась во время сборки; повтори запрос, чтобы применить новую компоновку",
+          );
         return;
       }
       st.setScene(result);
       st.select(null);
+      setPrompt((draft) => (draft.trim() === text.trim() ? "" : draft));
+      const warnings = data.generation.warnings?.filter(
+        (w: string) => w !== "шаблонная раскладка, без ai",
+      );
+      if (warnings?.length) setNotice(warnings.join(" · "));
     } catch (e) {
-      const cancelled = e instanceof DOMException && e.name === "AbortError";
-      record({
-        status: cancelled ? "cancelled" : "error",
-        error: cancelled
-          ? "сборка отменена"
-          : e instanceof Error
-            ? e.message
-            : "ошибка соединения",
-      });
-      if (!(e instanceof DOMException && e.name === "AbortError"))
-        setNotice(
+      if (!ac.signal.aborted && useStore.getState().current === current)
+        setComposerError(
           e instanceof Error ? e.message : "ошибка соединения с сервером",
         );
     } finally {
@@ -527,32 +448,6 @@ export default function App() {
       download(
         exportSVG(scene, assets, sources),
         `${fileName(project?.title)}.svg`,
-      );
-    } catch (e) {
-      setNotice((e as Error).message);
-    }
-  }
-  async function importProject(f?: File) {
-    if (!f) return;
-    try {
-      if (f.size > 32e6) throw Error("проект слишком большой");
-      const raw = JSON.parse(await f.text());
-      const { readProject } = await import("./validate");
-      const imported = readProject(raw, assets);
-      st.importProject(imported);
-      resetComposer();
-    } catch (e) {
-      setNotice((e as Error).message);
-    }
-  }
-  async function saveProject() {
-    if (!project) return;
-    try {
-      const { serializeProject } = await import("./validate");
-      download(
-        serializeProject(project, st.customAssets),
-        `${fileName(project.title)}.json`,
-        "application/json",
       );
     } catch (e) {
       setNotice((e as Error).message);
@@ -661,11 +556,10 @@ export default function App() {
                       }}
                       onClick={() => {
                         st.openProject(p.id);
-                        setPicked([]);
                         if (window.innerWidth <= 760) setSidebar(false);
                       }}
                     >
-                      <MessageSquare size={16} />
+                      <Shapes size={16} />
                       <span>{p.title}</span>
                     </button>
                   )}
@@ -693,20 +587,6 @@ export default function App() {
                 </div>
               ))}
           </nav>
-          <div className="sidebar-bottom">
-            {project && (
-              <button
-                title="сохранить проект json"
-                aria-label="сохранить проект json"
-                onClick={saveProject}
-              >
-                <Download size={16} /> сохранить проект
-              </button>
-            )}
-            <button onClick={() => projectRef.current?.click()}>
-              <Upload size={16} /> открыть проект
-            </button>
-          </div>
         </aside>
       )}
       <main className="main-shell" ref={mainRef} inert={!!deleting}>
@@ -912,9 +792,6 @@ export default function App() {
               select={st.select}
               change={change}
               add={add}
-              picked={picked}
-              pick={setPicked}
-              selectionMode={mode === "selection"}
               upload={() => fileRef.current?.click()}
               uploadPalette={() => paletteRef.current?.click()}
               format={format}
@@ -1011,16 +888,6 @@ export default function App() {
           e.target.value = "";
         }}
       />
-      <input
-        ref={projectRef}
-        type="file"
-        accept=".json,application/json"
-        hidden
-        onChange={(e) => {
-          void importProject(e.target.files?.[0]);
-          e.target.value = "";
-        }}
-      />
     </div>
   );
   function composer() {
@@ -1029,59 +896,10 @@ export default function App() {
         className={`composer-stack ${hasScene ? "in-editor" : ""}`}
         ref={stackRef}
       >
-        {hasScene && (
-          <div
-            className={`chat-history ${historyOpen ? "is-focused" : ""}`}
-            style={historyOpen ? { height: historyHeight } : undefined}
-          >
-            <div
-              className="conversation"
-              ref={conversationRef}
-              aria-label="история запросов"
-              tabIndex={historyOpen ? 0 : -1}
-            >
-              {project?.generations?.length
-                ? project.generations.map((g) => (
-                    <div className={`generation-record ${g.status}`} key={g.id}>
-                      <div>
-                        <span>{g.prompt}</span>
-                        <small>
-                          {g.source === "llm" ? "ai" : "шаблон"} ·{" "}
-                          {g.mode === "concept" ? "по идее" : "из объектов"} ·{" "}
-                          {new Date(g.createdAt).toLocaleTimeString("ru", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </small>
-                      </div>
-                      {g.status === "success" && g.scene ? (
-                        historyOpen && (
-                          <button
-                            onClick={() => {
-                              st.setScene(structuredClone(g.scene!));
-                              st.select(null);
-                              setHistoryOpen(false);
-                            }}
-                          >
-                            открыть результат
-                          </button>
-                        )
-                      ) : (
-                        <small>{g.error ?? "сборка отменена"}</small>
-                      )}
-                    </div>
-                  ))
-                : project?.messages
-                    .filter((m) => m.role === "user")
-                    .map((m, i) => (
-                      <div className="generation-record" key={i}>
-                        {m.text}
-                      </div>
-                    ))}
-            </div>
-          </div>
-        )}
-        <div className={`composer ${hasScene ? "compact" : ""}`}>
+        <div
+          className={`composer ${hasScene ? "compact" : ""}`}
+          aria-busy={busy}
+        >
           <button
             className="attach-button icon-button"
             title="библиотека и загрузка svg"
@@ -1093,9 +911,8 @@ export default function App() {
           <textarea
             ref={promptRef}
             aria-label="описание композиции"
-            placeholder={
-              mode === "concept" ? "опиши композицию" : "пожелания к композиции"
-            }
+            aria-describedby={composerError ? "composer-error" : undefined}
+            placeholder="идея иллюстрации или названия объектов"
             value={prompt}
             maxLength={2000}
             rows={1}
@@ -1111,68 +928,15 @@ export default function App() {
               }
             }}
           />
-          {busy ? (
-            <button
-              className="generate"
-              title="отменить текущую сборку"
-              aria-label="остановить сборку"
-              onClick={() => controller.current?.abort()}
-            >
-              <LoaderCircle className="spin" size={17} />
-            </button>
-          ) : (
-            <button
-              className="generate"
-              title="собрать композицию · enter (shift + enter — новая строка)"
-              aria-label="собрать композицию"
-              disabled={!ready}
-              onClick={() => void generate()}
-            >
-              <ArrowUp size={20} />
-            </button>
-          )}
-        </div>
-        {busy && (
-          <div className="generation-progress" role="status">
-            <LoaderCircle className="spin" size={13} />{" "}
-            {planner === "llm"
-              ? "ai собирает композицию…"
-              : "собираю по шаблону…"}
-            <button onClick={() => controller.current?.abort()}>
-              отменить
-            </button>
-          </div>
-        )}
-        <div className="composer-tabs composer-control-row">
-          <button
-            className={mode === "concept" ? "active" : ""}
-            aria-pressed={mode === "concept"}
-            disabled={busy}
-            onClick={() => setMode("concept")}
-          >
-            <Sparkles size={14} /> по идее
-          </button>
-          <button
-            className={mode === "selection" ? "active" : ""}
-            aria-pressed={mode === "selection"}
-            disabled={busy}
-            onClick={() => {
-              setMode("selection");
-              openLibrary();
-            }}
-          >
-            <Shapes size={14} /> из объектов{" "}
-            {picked.length > 0 && <span>{picked.length}</span>}
-          </button>
           <div className="ai-controls" ref={aiSettingsRef}>
             <button
-              className="icon-button"
+              className="planner-control icon-button"
               title="параметры генерации"
               aria-label="параметры генерации"
               aria-expanded={settings}
               onClick={() => setSettings(!settings)}
             >
-              <SlidersHorizontal size={14} />
+              <SlidersHorizontal size={16} />
               <span>{planner === "llm" ? "ai" : "шаблон"}</span>
             </button>
             {settings && (
@@ -1196,42 +960,37 @@ export default function App() {
               </div>
             )}
           </div>
-          {hasScene && (
-            <button
-              className="generation-toggle icon-button"
-              title={historyOpen ? "свернуть историю" : "развернуть историю"}
-              aria-label={
-                historyOpen ? "закрыть историю генераций" : "история генераций"
-              }
-              aria-expanded={historyOpen}
-              onClick={() => setHistoryOpen(!historyOpen)}
-            >
-              {historyOpen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-            </button>
-          )}
-        </div>
-        {mode === "selection" && picked.length > 0 && (
-          <div className="picked-chips">
-            {picked.slice(0, 2).map((id) => (
-              <button
-                key={id}
-                onClick={() => setPicked(picked.filter((v) => v !== id))}
-              >
-                {assets.find((a) => a.id === id)?.displayName}
-                <X size={11} />
-              </button>
-            ))}
-            {picked.length > 2 && (
-              <button
-                title={picked
-                  .slice(2)
-                  .map((id) => assets.find((a) => a.id === id)?.displayName)
-                  .join(", ")}
-                onClick={openLibrary}
-              >
-                ещё {picked.length - 2}
-              </button>
+          <button
+            className={`generate ${busy ? "is-busy" : ""}`}
+            title={
+              busy
+                ? "остановить сборку"
+                : "собрать композицию · enter (shift + enter — новая строка)"
+            }
+            aria-label={busy ? "остановить сборку" : "собрать композицию"}
+            disabled={!ready || (!busy && !prompt.trim())}
+            onClick={() =>
+              busy ? controller.current?.abort() : void generate()
+            }
+          >
+            {busy ? (
+              <Square size={14} fill="currentColor" strokeWidth={0} />
+            ) : (
+              <ArrowUp size={20} />
             )}
+          </button>
+        </div>
+        {composerError && (
+          <div className="composer-error" id="composer-error" role="alert">
+            <span>{composerError}</span>
+            <button
+              className="icon-button"
+              title="закрыть ошибку"
+              aria-label="закрыть ошибку"
+              onClick={() => setComposerError("")}
+            >
+              <X size={14} />
+            </button>
           </div>
         )}
       </div>

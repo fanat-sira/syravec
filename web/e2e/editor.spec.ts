@@ -100,7 +100,7 @@ test("ошибка генерации сохраняет сцену", async ({ p
     .getByRole("textbox", { name: "описание композиции" })
     .fill("другая композиция");
   await page.getByRole("button", { name: "собрать композицию" }).click();
-  await expect(page.getByRole("status")).toContainText("ошибка модели");
+  await expect(page.getByRole("alert")).toContainText("ошибка модели");
   expect(await page.locator(".artboard").innerHTML()).toBe(before);
 });
 
@@ -157,67 +157,6 @@ test("указатель двигает, масштабирует и враща�
   ).toBeDisabled();
 });
 
-test("режим выбранных объектов, своя палитра и перенос проекта", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: "из объектов", exact: true }).click();
-  await page
-    .getByRole("button", { name: "выбрать Книга для генерации" })
-    .click();
-  await page
-    .getByRole("button", { name: "выбрать Телефон для генерации" })
-    .click();
-  await page.getByRole("button", { name: "собрать композицию" }).click();
-  await expect(page.locator(".layer-row")).toHaveCount(2);
-  await expect(page.locator(".layer-list")).toContainText("Книга");
-  await expect(page.locator(".layer-list")).toContainText("Телефон");
-  const palette = {
-    strong: "#245345",
-    medium: "#7aa394",
-    light: "#e1eee9",
-    highlight: "#fff0bf",
-    pink: "#dc8c92",
-    soft: "#ffe3e1",
-  };
-  await page
-    .locator('input[type=file][accept=".json,application/json"]')
-    .first()
-    .setInputFiles({
-      name: "palette.json",
-      mimeType: "application/json",
-      buffer: Buffer.from(JSON.stringify(palette)),
-    });
-
-  await expect
-    .poll(() => page.locator(".artboard").innerHTML())
-    .toContain("#e1eee9");
-  // include a custom vector, then export and reopen a complete project
-  await page
-    .locator('input[type=file][accept=".svg,image/svg+xml"]')
-    .setInputFiles({
-      name: "triangle.svg",
-      mimeType: "image/svg+xml",
-      buffer: Buffer.from(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path fill="#123456" d="M0 100L50 0L100 100Z"/></svg>',
-      ),
-    });
-  await expect(page.locator(".layer-row")).toHaveCount(3);
-  const downloading = page.waitForEvent("download");
-  await page.getByRole("button", { name: "сохранить проект json" }).click();
-  const file = await downloading;
-  await file.saveAs("/tmp/syravec-project.json");
-  await page
-    .getByRole("button", { name: "новая композиция", exact: false })
-    .click();
-  await page
-    .locator('input[type=file][accept=".json,application/json"]')
-    .last()
-    .setInputFiles("/tmp/syravec-project.json");
-  await expect(page.locator(".layer-row")).toHaveCount(3);
-  expect(await page.locator(".artboard").innerHTML()).toContain("#123456");
-});
-
 test("запоздавший ответ не заменяет ручную правку", async ({ page }) => {
   await page.route("**/api/v1/health", (r) =>
     r.fulfill({ json: { aiConfigured: true } }),
@@ -265,9 +204,7 @@ test("запоздавший ответ не заменяет ручную пр�
   await page.locator(".layer-row").first().locator("button").first().click();
   await page.getByRole("button", { name: "дублировать объект" }).click();
   release();
-  await expect(page.getByRole("status")).toContainText(
-    "новый ответ не применен",
-  );
+  await expect(page.getByRole("alert")).toContainText("композиция изменилась");
   await expect(page.locator(".layer-row")).toHaveCount(4);
 });
 

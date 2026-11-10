@@ -90,6 +90,9 @@ type Server struct {
 	slots                   chan struct{}
 	mu                      sync.Mutex
 	calls                   []time.Time
+	ipCalls                 map[string][]time.Time
+	usagePath               string
+	trustProxy              bool
 }
 
 func env(k, d string) string {
@@ -108,13 +111,13 @@ func fail(w http.ResponseWriter, status int, code, message string) {
 	respond(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
 }
 func (s *Server) validate(r Request) error {
-	if r.Mode != "concept" && r.Mode != "selection" {
+	if r.Mode != "auto" && r.Mode != "concept" && r.Mode != "selection" {
 		return errors.New("неизвестный режим")
 	}
 	if len([]rune(r.Prompt)) > 2000 {
 		return errors.New("запрос длиннее 2000 символов")
 	}
-	if r.Mode == "concept" && strings.TrimSpace(r.Prompt) == "" {
+	if r.Mode != "selection" && strings.TrimSpace(r.Prompt) == "" {
 		return errors.New("добавь описание композиции")
 	}
 	if r.Palette != "violet" && r.Palette != "teal" && r.Palette != "warm" && r.Palette != "custom" {
@@ -125,6 +128,9 @@ func (s *Server) validate(r Request) error {
 	}
 	if r.Planner != "" && r.Planner != "llm" && r.Planner != "template" {
 		return errors.New("неизвестный способ сборки")
+	}
+	if r.Mode == "auto" && len(r.AssetIDs) != 0 {
+		return errors.New("в автоматическом режиме объекты определяются по запросу")
 	}
 	if len(r.AssetIDs) > 12 || r.Mode == "selection" && len(r.AssetIDs) == 0 {
 		return errors.New("выбери от 1 до 12 объектов")
@@ -391,6 +397,9 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 	source := "fallback"
 	warnings := []string{}
 	if input.Planner == "template" {
+		if input.Mode == "auto" {
+			input = s.templateRoute(input)
+		}
 		p = s.template(input)
 		warnings = append(warnings, "шаблонная раскладка, без ai")
 	} else {
@@ -398,33 +407,14 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 			fail(w, 503, "not_configured", "ai пока не подключен, попробуй шаблонную сборку")
 			return
 		}
-		s.mu.Lock()
-		now := time.Now()
-		recent := s.calls[:0]
-		for _, t := range s.calls {
-			if now.Sub(t) < time.Minute {
-				recent = append(recent, t)
+		if input.Mode == "auto" || s.guardEnabled && strings.TrimSpace(input.Prompt) != "" {
+			var decision guardDecision
+			var guardErr error
+			if input.Mode == "auto" {
+				input, decision, guardErr = s.routePrompt(r.Context(), input)
+			} else {
+				decision, guardErr = s.checkPrompt(r.Context(), input)
 			}
-		}
-		s.calls = recent
-		if len(recent) >= 10 {
-			s.mu.Unlock()
-			fail(w, 429, "rate_limited", "слишком много запросов, подожди минуту")
-			return
-		}
-		s.calls = append(s.calls, now)
-		s.mu.Unlock()
-		select {
-		case s.slots <- struct{}{}:
-			defer func() { <-s.slots }()
-		default:
-			fail(w, 429, "rate_limited", "сервис занят, попробуй позже")
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
-		defer cancel()
-		if s.guardEnabled && strings.TrimSpace(input.Prompt) != "" {
-			decision, guardErr := s.checkPrompt(ctx, input)
 			if r.Context().Err() != nil {
 				return
 			}
@@ -444,23 +434,58 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if decision != guardAllow {
-				fail(w, 422, "prompt_uncertain", "сформулируй запрос как идею для иллюстрации или уточни расположение выбранных объектов")
+				fail(w, 422, "prompt_uncertain", "опиши идею для иллюстрации или перечисли объекты из библиотеки — не удалось уверенно определить запрос")
 				return
 			}
 		}
-		p, err = s.plan(ctx, input)
-		if err != nil {
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				fail(w, 504, "provider_timeout", "модель не ответила вовремя, композиция сохранена")
-			} else if upstream := (providerError{}); errors.As(err, &upstream) && upstream.status == 429 {
-				fail(w, 429, "rate_limited", "лимит провайдера исчерпан, попробуй позже")
-			} else {
-				log.Printf("planner failed: %T", err)
-				fail(w, 502, "provider_error", "не удалось получить корректную композицию, попробуй еще раз или выбери шаблон")
+		if input.Mode == "selection" {
+			// Explicit components need arrangement, not another model call.
+			p = s.template(input)
+			warnings = append(warnings, "шаблонная раскладка, без ai")
+		} else {
+			if r.Context().Err() != nil {
+				return
 			}
-			return
+			select {
+			case s.slots <- struct{}{}:
+				defer func() { <-s.slots }()
+			default:
+				fail(w, 429, "concurrency_limit", "уже собираются две AI-композиции, попробуй чуть позже")
+				return
+			}
+			limit, reserveErr := s.reserveAI(s.clientIP(r))
+			if reserveErr != nil {
+				log.Printf("AI quota storage failed: %T", reserveErr)
+				fail(w, 503, "quota_unavailable", "не удалось проверить лимит AI-генераций, попробуй позже")
+				return
+			}
+			if limit != "" {
+				message := "достигнут лимит сервиса: 100 AI-генераций за 24 часа, попробуй позже"
+				if limit == "ip_daily_limit" {
+					message = "достигнут лимит: 20 AI-генераций с одного IP за 24 часа, попробуй позже"
+				}
+				fail(w, 429, limit, message)
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+			defer cancel()
+			p, err = s.plan(ctx, input)
+			if err != nil {
+				if r.Context().Err() != nil {
+					return
+				}
+				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					fail(w, 504, "provider_timeout", "модель не ответила вовремя, композиция сохранена")
+				} else if upstream := (providerError{}); errors.As(err, &upstream) && upstream.status == 429 {
+					fail(w, 429, "rate_limited", "лимит провайдера исчерпан, попробуй позже")
+				} else {
+					log.Printf("planner failed: %T", err)
+					fail(w, 502, "provider_error", "не удалось получить корректную композицию, попробуй еще раз или выбери шаблон")
+				}
+				return
+			}
+			source = "llm"
 		}
-		source = "llm"
 	}
 	sc, layoutWarnings := s.refine(s.scene(p, input))
 	warnings = append(warnings, layoutWarnings...)
@@ -491,13 +516,21 @@ func main() {
 		log.Fatal(err)
 	}
 	s := &Server{assets: c.Assets, manifest: raw, key: os.Getenv("OPENROUTER_API_KEY"), model: env("AI_MODEL", "openai/gpt-6-luna"), url: strings.TrimRight(env("AI_BASE_URL", "https://openrouter.ai/api/v1"), "/"), format: env("AI_RESPONSE_FORMAT", "json_schema"), client: &http.Client{Timeout: 48 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}, slots: make(chan struct{}, 2)}
+	s.usagePath = os.Getenv("AI_USAGE_PATH")
+	s.trustProxy, err = strconv.ParseBool(env("AI_TRUST_PROXY", "false"))
+	if err != nil {
+		log.Fatal("AI_TRUST_PROXY must be true or false")
+	}
+	if err = s.loadUsage(); err != nil {
+		log.Fatal("could not load AI usage counters: ", err)
+	}
 	s.guardEnabled, err = strconv.ParseBool(env("AI_GUARD_ENABLED", "true"))
 	if err != nil {
 		log.Fatal("AI_GUARD_ENABLED must be true or false")
 	}
 	s.guardModel = env("AI_GUARD_MODEL", "openai/gpt-6-luna-decisions")
 	s.guardURL = env("AI_GUARD_URL", "https://openrouter.ai/api/alpha/decisions")
-	srv := &http.Server{Addr: env("LISTEN_ADDR", "127.0.0.1:8080"), Handler: s.routes(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 55 * time.Second, IdleTimeout: 60 * time.Second}
+	srv := &http.Server{Addr: env("LISTEN_ADDR", "127.0.0.1:8080"), Handler: s.routes(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 60 * time.Second}
 	log.Printf("api listening on %s; ai configured: %v", srv.Addr, s.key != "")
 	log.Fatal(srv.ListenAndServe())
 }

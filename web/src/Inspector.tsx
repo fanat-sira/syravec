@@ -9,7 +9,6 @@ import {
 import {
   ChevronDown,
   Plus,
-  Check,
   Upload,
   Download,
   Search,
@@ -36,9 +35,6 @@ interface Props {
   select: (id: string | null) => void;
   change: (s: Scene) => void;
   add: (a: Asset) => void;
-  picked: string[];
-  pick: (ids: string[]) => void;
-  selectionMode: boolean;
   upload: () => void;
   uploadPalette: () => void;
   format: (p: Scene["canvas"]["preset"]) => void;
@@ -285,10 +281,6 @@ export function Inspector(p: Props) {
   };
   const thumbnail = (a: Asset) =>
     a.svg ? `data:image/svg+xml,${encodeURIComponent(a.svg)}` : a.assetUrl;
-  const choose = (id: string) => {
-    if (p.picked.includes(id)) p.pick(p.picked.filter((v) => v !== id));
-    else if (p.picked.length < 12) p.pick([...p.picked, id]);
-  };
   return (
     <aside
       className={`inspector ${p.open ? "is-open" : ""}`}
@@ -308,7 +300,7 @@ export function Inspector(p: Props) {
       >
         <Section
           name="библиотека"
-          count={p.picked.length}
+          count={groups.length}
           open={layout.open[0]}
           toggle={() => toggle(0)}
           height={layout.sizes[0]}
@@ -334,10 +326,7 @@ export function Inspector(p: Props) {
             </button>
           </div>
           <p className="library-hint">
-            + на холст
-            {p.selectionMode
-              ? " · ✓ только для сборки"
-              : " · миниатюру можно перетащить"}
+            + на холст · миниатюру можно перетащить
           </p>
           <div className="asset-grid">
             {groups
@@ -351,7 +340,7 @@ export function Inspector(p: Props) {
                     : main;
                 return (
                   <article
-                    className={`asset-card ${p.picked.includes(a.id) ? "is-picked" : ""}`}
+                    className="asset-card"
                     data-variant={a.variant}
                     key={main.id}
                     data-asset={main.id}
@@ -379,21 +368,6 @@ export function Inspector(p: Props) {
                     </div>
                     <div className="asset-card-heading">
                       <span>{main.displayName}</span>
-                      {p.selectionMode && (
-                        <button
-                          className={`asset-pick ${p.picked.includes(a.id) ? "picked" : ""}`}
-                          title={`выбрать ${main.displayName} только для сборки, без добавления на холст`}
-                          aria-label={`выбрать ${main.displayName} для генерации`}
-                          aria-pressed={p.picked.includes(a.id)}
-                          onClick={() => choose(a.id)}
-                        >
-                          {p.picked.includes(a.id) ? (
-                            <Check size={14} />
-                          ) : (
-                            <span />
-                          )}
-                        </button>
-                      )}
                     </div>
                     <div className="asset-card-controls">
                       <select

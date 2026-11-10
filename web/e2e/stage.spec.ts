@@ -95,59 +95,6 @@ test("ctrl с колесом масштабирует вид вокруг кур
   await page.getByTitle("вписать композицию").click();
   expect((await art.boundingBox())!.width).toBeCloseTo(before.width, 1);
 });
-test("компактный ввод, затухающая история и фокус без изменения холста", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: /знания открывают двери/ }).click();
-  await expect(page.locator(".topbar")).toHaveCount(0);
-  await expect(page.locator(".canvas-toolbar")).toHaveCount(0);
-  const canvas = (await page.locator(".canvas-area").boundingBox())!,
-    main = (await page.locator(".main-shell").boundingBox())!;
-  expect(canvas.height).toBeCloseTo(main.height - 2, 0);
-  expect(canvas.width).toBeCloseTo(main.width - 2, 0);
-  const composer = page.locator(".composer"),
-    input = page.getByRole("textbox", { name: "описание композиции" });
-  const first = (await composer.boundingBox())!;
-  expect(first.height).toBeLessThanOrEqual(52);
-  expect(await input.evaluate((el) => getComputedStyle(el).fontSize)).toBe(
-    "13px",
-  );
-  await input.fill("строка один\nстрока два");
-  const two = (await composer.boundingBox())!;
-  expect(two.height).toBeGreaterThan(first.height);
-  await input.fill("один\nдва\nтри");
-  const three = (await composer.boundingBox())!;
-  await input.fill("один\nдва\nтри\nчетыре\nпять");
-  expect((await composer.boundingBox())!.height).toBe(three.height);
-  expect(await input.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(
-    true,
-  );
-  await input.fill("");
-  expect((await composer.boundingBox())!.height).toBe(first.height);
-  await expect(page.locator(".conversation")).toBeVisible();
-  const mask = await page
-    .locator(".chat-history")
-    .evaluate((el) => getComputedStyle(el).maskImage);
-  expect(mask).toContain("0.2");
-  await page
-    .getByRole("button", { name: "история генераций", exact: true })
-    .click();
-  await expect(page.locator(".chat-history")).toHaveClass(/is-focused/);
-  expect(await page.locator(".canvas-area").boundingBox()).toEqual(canvas);
-  await page.getByRole("button", { name: "закрыть историю генераций" }).click();
-  await expect(page.locator(".conversation")).toBeVisible();
-  await page
-    .getByRole("button", { name: "переключить боковую панель" })
-    .click();
-  await expect(page.locator(".sidebar")).toHaveCount(0);
-  await expect(page.locator(".floating-sidebar-toggle")).toBeVisible();
-  await page
-    .getByRole("button", { name: "переключить боковую панель" })
-    .click();
-  await expect(page.locator(".sidebar")).toBeVisible();
-  await page.screenshot({ path: "../artifacts/full-stage.png" });
-});
 test("перенос из библиотеки создает первую композицию", async ({ page }) => {
   await page.goto("/");
   const before = await page.locator(".layer-row").count();
@@ -157,27 +104,4 @@ test("перенос из библиотеки создает первую ко�
   await expect(page.locator(".layer-row")).toHaveCount(before + 1);
   await expect(page.locator(".artboard")).toBeVisible();
   await expect(page.locator(".layer-row.active")).toContainText("Монета");
-});
-
-test("пустая сохраненная композиция сохраняет нижний ввод и фокус истории", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: /знания открывают двери/ }).click();
-  for (let i = 0; i < 3; i++) {
-    await page.locator(".layer-select").first().click();
-    await page.getByRole("button", { name: "удалить объект" }).click();
-  }
-  await expect(page.locator(".layer-row")).toHaveCount(0);
-  await expect(page.locator(".editor-dock")).toBeVisible();
-  await expect(page.locator(".conversation")).toBeVisible();
-  await page
-    .getByRole("button", { name: "история генераций", exact: true })
-    .click();
-  const box = (await page.locator(".chat-history").boundingBox())!;
-  expect(box.y).toBeGreaterThanOrEqual(0);
-  expect(box.y + box.height).toBeLessThan(1000);
-  await expect(
-    page.getByRole("textbox", { name: "описание композиции" }),
-  ).toBeVisible();
 });

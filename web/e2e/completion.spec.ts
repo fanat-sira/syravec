@@ -1,3 +1,4 @@
+import { seedScene } from "./helpers";
 import { test, expect } from "@playwright/test";
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/v1/health", (r) =>
@@ -32,14 +33,7 @@ test("форматы и все палитры сохраняют исходны�
     backgroundId: "background-square-violet",
     layers,
   };
-  await page
-    .locator('input[type=file][accept=".json,application/json"]')
-    .last()
-    .setInputFiles({
-      name: "catalog.json",
-      mimeType: "application/json",
-      buffer: Buffer.from(JSON.stringify({ scene })),
-    });
+  await seedScene(page, scene);
   await expect(page.locator(".layer-row")).toHaveCount(20);
   const paths = await page
     .locator(".artboard>g>g[transform]")
@@ -127,105 +121,4 @@ test("блокировка защищает от удаления и перес�
   await active.getByRole("button", { name: "показать слой" }).click();
   await page.getByRole("button", { name: "удалить объект" }).click();
   await expect(page.locator(".layer-row")).toHaveCount(2);
-});
-test("перенос проекта в чистый браузер сохраняет название, предыдущие результаты и свою палитру", async ({
-  page,
-  browser,
-}) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: /знания открывают двери/ }).click();
-  await page
-    .locator('input[type=file][accept=".svg,image/svg+xml"]')
-    .setInputFiles({
-      name: "звезда.svg",
-      mimeType: "image/svg+xml",
-      buffer: Buffer.from(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M50 0L100 100H0Z" fill="#f99366"/></svg>',
-      ),
-    });
-  await page.getByRole("button", { name: "из объектов", exact: true }).click();
-  await page
-    .getByRole("button", { name: "выбрать звезда для генерации" })
-    .click();
-  await page
-    .getByRole("textbox", { name: "описание композиции" })
-    .fill("мой результат");
-  await page.getByRole("button", { name: "собрать композицию" }).click();
-  await expect(page.locator(".layer-row")).toHaveCount(1);
-  const palette = {
-    strong: "#36563a",
-    medium: "#8aa887",
-    light: "#e0efdc",
-    highlight: "#ffe299",
-    pink: "#e99daa",
-    soft: "#f5dce1",
-  };
-  await page
-    .locator('input[type=file][accept=".json,application/json"]')
-    .first()
-    .setInputFiles({
-      name: "palette.json",
-      mimeType: "application/json",
-      buffer: Buffer.from(JSON.stringify(palette)),
-    });
-  const dl = page.waitForEvent("download");
-  await page.getByRole("button", { name: "сохранить проект json" }).click();
-  const project = await dl;
-  await project.saveAs("/tmp/syravec-complete.json");
-  const fresh = await browser.newContext();
-  const tab = await fresh.newPage();
-  await tab.goto("/");
-  await tab
-    .locator('input[type=file][accept=".json,application/json"]')
-    .last()
-    .setInputFiles("/tmp/syravec-complete.json");
-  await expect(tab.locator(".layer-row")).toHaveCount(1);
-  await expect(tab.locator(".history-row")).toContainText(
-    "знания открывают двери",
-  );
-  expect(await tab.locator(".artboard").innerHTML()).toContain("#e0efdc");
-  await tab
-    .getByRole("button", { name: "история генераций", exact: true })
-    .click();
-  await expect(tab.locator(".generation-record")).toContainText(
-    "мой результат",
-  );
-  await tab.getByRole("button", { name: "открыть результат" }).click();
-  await expect(tab.locator(".layer-row")).toContainText("звезда");
-  expect(await tab.locator(".artboard").innerHTML()).toContain("#f99366");
-  await fresh.close();
-});
-test("настоящая связка с go возвращает разные шаблонные компоновки строго выбранного набора", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: "из объектов", exact: true }).click();
-  for (const name of ["Книга", "Телефон", "Пазлы"])
-    await page
-      .getByRole("button", { name: `выбрать ${name} для генерации` })
-      .click();
-  const results: any[] = [];
-  page.on("response", async (r) => {
-    if (r.url().endsWith("/api/v1/compositions") && r.ok())
-      results.push(await r.json());
-  });
-  await page.getByRole("button", { name: "собрать композицию" }).click();
-  await expect(page.locator(".layer-row")).toHaveCount(3);
-  await page.getByRole("button", { name: "собрать композицию" }).click();
-  await expect.poll(() => results.length).toBe(2);
-  expect(results[0].generation.source).toBe("fallback");
-  expect(results[0].scene.layers.map((l: any) => l.assetId).sort()).toEqual([
-    "book-main",
-    "phone-main",
-    "puzzle-main",
-  ]);
-  expect(results[0].scene.layers.map((l: any) => [l.x, l.y])).not.toEqual(
-    results[1].scene.layers.map((l: any) => [l.x, l.y]),
-  );
-  await page
-    .getByRole("button", { name: "история генераций", exact: true })
-    .click();
-  await expect(
-    page.getByRole("button", { name: "открыть результат" }),
-  ).toHaveCount(2);
 });
