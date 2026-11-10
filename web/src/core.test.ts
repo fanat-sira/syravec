@@ -23,9 +23,9 @@ const source =
 describe("векторная сцена", () => {
   it("центрирует ненулевой viewbox и сохраняет пропорции", () => {
     const s = emptyScene(),
-      l = { ...layer("book-main"), scale: 1, rotation: 30 };
+      l = { ...layer("book-main"), rotation: 30 };
     expect(transform(s, l, asset)).toBe(
-      "translate(500 500) rotate(30) scale(2) translate(-110 -70)",
+      "translate(500 500) rotate(30) translate(-110 -70)",
     );
   });
   it("экспортирует повторные объекты без коллизий определений и без растров", () => {

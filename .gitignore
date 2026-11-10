@@ -54,3 +54,8 @@ artifacts/
 # private working notes and generated asset reports
 local-notes/
 docs/source-colors.json
+
+# prepared original source sets stay in the runtime volume
+web/public/assets/library-*/
+web/public/assets/.next-*/
+web/public/assets/.manifest-next.json

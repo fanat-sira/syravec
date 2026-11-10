@@ -24,6 +24,11 @@ test ! -f "$DEPLOY_TEST_LOG"
 if sh "$repo/scripts/deploy.sh" > "$test_root/output" 2>&1; then exit 1; fi
 test ! -f "$DEPLOY_TEST_LOG"
 : > 'originals/assets.zip'
+# A host with only the old large archive must keep its current release running.
+if sh "$repo/scripts/deploy.sh" > "$test_root/output" 2>&1; then exit 1; fi
+test ! -f "$DEPLOY_TEST_LOG"
+grep -qF 'small original SVG archive' "$test_root/output"
+: > 'originals/assets-small.zip'
 printf 'old\n' > .deployed-tag
 # New release fails; previous tag is restored and recorded tag is preserved.
 if FAIL_NEW_RELEASE=1 sh "$repo/scripts/deploy.sh" > "$test_root/output" 2>&1; then exit 1; fi

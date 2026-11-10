@@ -64,10 +64,10 @@ func TestCompositionMatrix(t *testing.T) {
 				for _, l := range sc.Layers {
 					found[l.AssetID]++
 					b := s.bounds(l, sc.Canvas)
-					if b.x < -.001 || b.y < -.001 || b.x+b.w > 1.001 || b.y+b.h > 1.001 {
+					if math.IsNaN(b.w) || math.IsNaN(b.h) || b.w <= 0 || b.h <= 0 {
 						t.Fatalf("clipped %s %s: %+v", preset, l.AssetID, b)
 					}
-					if math.IsNaN(l.Scale) || l.Scale < .1 {
+					if math.IsNaN(l.X) || math.IsNaN(l.Y) {
 						t.Fatal("invalid scale")
 					}
 				}
@@ -100,7 +100,7 @@ func TestNormalizerRepairsFiniteOutOfFramePlan(t *testing.T) {
 	s := realCatalog(t)
 	r := req()
 	r.AssetIDs = []string{"book-main", "lamp-main"}
-	p := Plan{Items: []Item{{AssetID: "book-main", X: -.4, Y: 1.7, RelativeSize: 8, Rotation: 395, Role: "focal", Depth: 2}, {AssetID: "lamp-main", X: 1.8, Y: -.1, RelativeSize: 4, Rotation: -70, Role: "support", Depth: 1}}}
+	p := Plan{Items: []Item{{AssetID: "book-main", X: -.4, Y: 1.7, Rotation: 395, Role: "focal", Depth: 2}, {AssetID: "lamp-main", X: 1.8, Y: -.1, Rotation: -70, Role: "support", Depth: 1}}}
 	if err := s.validatePlan(p, r); err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestNormalizerRepairsFiniteOutOfFramePlan(t *testing.T) {
 	}
 	for _, l := range sc.Layers {
 		b := s.bounds(l, sc.Canvas)
-		if b.x < 0 || b.y < 0 || b.x+b.w > 1 || b.y+b.h > 1 {
+		if math.IsNaN(b.w) || math.IsNaN(b.h) || b.w <= 0 || b.h <= 0 {
 			t.Fatal("failed normalization")
 		}
 	}
@@ -130,7 +130,7 @@ func TestStructuredPromptAndBoundedRepair(t *testing.T) {
 		}
 		content := `{"items":[{"assetId":"invented","relativeSize":1}]}`
 		if calls == 2 {
-			content = `{"concept":"knowledge connects people","layout":"diagonal","items":[{"assetId":"book-main","role":"focal","preferredX":0.45,"preferredY":0.6,"relativeSize":1.9,"rotation":-6,"depth":1,"opacity":1},{"assetId":"phone-main","role":"support","preferredX":0.75,"preferredY":0.3,"relativeSize":1,"rotation":4,"depth":2,"opacity":1}]}`
+			content = `{"concept":"knowledge connects people","layout":"diagonal","items":[{"assetId":"book-main","role":"focal","preferredX":0.45,"preferredY":0.6,"rotation":-6,"depth":1,"opacity":1},{"assetId":"phone-main","role":"support","preferredX":0.75,"preferredY":0.3,"rotation":4,"depth":2,"opacity":1}]}`
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": content}, "finish_reason": "stop"}}})
 	}))
@@ -172,7 +172,7 @@ func TestSelectionRejectsAnyExtraOrMissingAsset(t *testing.T) {
 	for _, ids := range [][]string{{"book-background"}, {"book-background", "phone-main", "coin-main"}, {"book-background", "phone-main", "phone-main"}} {
 		p := Plan{}
 		for _, id := range ids {
-			p.Items = append(p.Items, Item{AssetID: id, X: .5, Y: .5, RelativeSize: 1})
+			p.Items = append(p.Items, Item{AssetID: id, X: .5, Y: .5})
 		}
 		if err := s.validatePlan(p, r); err == nil {
 			t.Fatal("invalid selection accepted")
@@ -185,7 +185,7 @@ func TestConfiguredKeyMakesLLMTheDefault(t *testing.T) {
 	calls := 0
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
-		content := `{"concept":"focused learning","layout":"diagonal","items":[{"assetId":"book-main","role":"focal","preferredX":0.45,"preferredY":0.55,"relativeSize":1.7,"rotation":-4,"depth":1,"opacity":1},{"assetId":"lamp-main","role":"support","preferredX":0.75,"preferredY":0.25,"relativeSize":1,"rotation":0,"depth":2,"opacity":1}]}`
+		content := `{"concept":"focused learning","layout":"diagonal","items":[{"assetId":"book-main","role":"focal","preferredX":0.45,"preferredY":0.55,"rotation":-4,"depth":1,"opacity":1},{"assetId":"lamp-main","role":"support","preferredX":0.75,"preferredY":0.25,"rotation":0,"depth":2,"opacity":1}]}`
 		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": content}}}})
 	}))
 	defer upstream.Close()

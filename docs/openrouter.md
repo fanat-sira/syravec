@@ -22,12 +22,12 @@ The system message defines:
 - interpret free text as an illustration idea;
 - return `concept`, `layout`, and `items` in JSON;
 - in selection, preserve the exact number of occurrences of every requested asset ID;
-- use normalized positions, uniform relative sizes, rotation, depth, opacity, and object roles;
+- use normalized positions, immutable native SVG dimensions, rotation, depth, opacity, and object roles;
 - respect the format and palette, and vary the arrangement across requests.
 
-The system message ends with catalog metadata: `id`, `name`, `description`, `variant`, `aspect`, `visualWeight`, and `centroid`. Concept receives the built-in catalog. Selection receives only the requested assets. Uploaded SVGs contribute their name and aspect ratio; the model does not see their rendered appearance or source paths.
+The system message ends with catalog metadata: `id`, `name`, `description`, `variant`, `width`, `height`, `aspect`, `visualWeight`, and `centroid`. Concept receives the built-in catalog. Selection receives only the requested assets. Uploaded SVGs contribute their name and aspect ratio; the model does not see their rendered appearance or source paths.
 
-The user message contains the request JSON, followed by a random `variationId`. For example:
+The user message contains the request JSON, followed by the active canvas dimensions, fixed object factor, and a random `variationId`. For example:
 
 ```json
 {
@@ -36,6 +36,7 @@ The user message contains the request JSON, followed by a random `variationId`. 
   "assetIds": ["coin-main", "pen-main", "pen-main"],
   "palette": "violet",
   "canvasPreset": "square",
+  "illustrationSize": "large",
   "seed": 7,
   "planner": "llm",
   "paletteColors": {
@@ -62,15 +63,15 @@ The client expects one `choices` entry and reads its `message.content` as a JSON
   "concept": "A coin forms a clock face, with two pens as hands.",
   "layout": "layered",
   "items": [
-    {"assetId":"coin-main","role":"focal","preferredX":0.5,"preferredY":0.5,"relativeSize":1.8,"rotation":0,"depth":0,"opacity":1},
-    {"assetId":"pen-main","role":"support","preferredX":0.52,"preferredY":0.4,"relativeSize":0.8,"rotation":0,"depth":1,"opacity":1},
-    {"assetId":"pen-main","role":"support","preferredX":0.6,"preferredY":0.5,"relativeSize":0.6,"rotation":90,"depth":2,"opacity":1}
+    {"assetId":"coin-main","role":"focal","preferredX":0.5,"preferredY":0.5,"rotation":0,"depth":0,"opacity":1},
+    {"assetId":"pen-main","role":"support","preferredX":0.52,"preferredY":0.4,"rotation":0,"depth":1,"opacity":1},
+    {"assetId":"pen-main","role":"support","preferredX":0.6,"preferredY":0.5,"rotation":90,"depth":2,"opacity":1}
   ]
 }
 ```
 
-`layout` is one of `diagonal`, `cluster`, `arc`, `editorial`, or `layered`. Positions are normalized canvas centers. A relative size of 1 means a longest side equal to 40% of the shorter canvas side before normalization. Rotation is in degrees; depth runs back to front. Roles are `focal`, `support`, or `decor`.
+`layout` is one of `diagonal`, `cluster`, `arc`, `editorial`, or `layered`. Positions are normalized canvas centers. Objects retain their active original viewBox dimensions with one common factor of 1. There is no `relativeSize` or per-layer `scale` in the accepted contract. Objects may extend beyond the frame; Go does not shrink them to fit. Rotation is in degrees; depth runs back to front. Roles are `focal`, `support`, or `decor`.
 
-Go validates IDs, counts, numerical values, roles, and opacity. It normalizes geometry and returns a scene to the browser. For rearrangement, the browser applies layout transforms/order while preserving original layer IDs, visibility, opacity, and lock flags. The exported SVG is assembled locally from the original vectors, not received from the provider.
+Go validates IDs, counts, numerical values, roles, and opacity. It optimizes positions without changing native sizes and returns a version-2 scene to the browser. For rearrangement, the browser applies layout transforms/order while preserving original layer IDs, visibility, opacity, and lock flags. The exported SVG is assembled locally from the original vectors, not received from the provider.
 
 An invalid plan may trigger one repair call containing the validation error. Each dispatched call consumes the shared main-model quota. Provider errors are not retried automatically; a truncated response (`finish_reason: length`) is treated as invalid. Provider token-usage and billing fields are not currently extracted by this client.

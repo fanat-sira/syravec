@@ -41,6 +41,7 @@ interface Props {
   upload: () => void;
   uploadPalette: () => void;
   format: (p: Scene["canvas"]["preset"]) => void;
+  illustrationSize: (size: Scene["illustrationSize"]) => void;
   open: boolean;
   close: () => void;
   libraryExpanded: boolean;
@@ -654,14 +655,6 @@ export function Inspector(p: Props) {
                 {(
                   [
                     {
-                      key: "scale",
-                      name: "масштаб",
-                      min: 0.1,
-                      max: 6,
-                      step: 0.01,
-                      value: Math.round(selected.scale * 100) + "%",
-                    },
-                    {
                       key: "rotation",
                       name: "поворот",
                       min: -180,
@@ -730,6 +723,34 @@ export function Inspector(p: Props) {
             ) : (
               <>
                 <div className="properties-name">композиция</div>
+                <label>
+                  размер иллюстраций
+                  <select
+                    aria-label="размер иллюстраций"
+                    value={p.scene.illustrationSize}
+                    disabled={p.scene.layers.some(
+                      (l) => p.assets.find((a) => a.id === l.assetId)?.svg,
+                    )}
+                    title={
+                      p.scene.layers.some(
+                        (l) => p.assets.find((a) => a.id === l.assetId)?.svg,
+                      )
+                        ? "для своих SVG нет альтернативного исходника"
+                        : "выбрать исходный набор SVG"
+                    }
+                    onChange={(e) =>
+                      p.illustrationSize(
+                        e.target.value as Scene["illustrationSize"],
+                      )
+                    }
+                  >
+                    <option value="large">большой</option>
+                    <option value="small">малый</option>
+                  </select>
+                  {p.scene.layers.some(
+                    (l) => p.assets.find((a) => a.id === l.assetId)?.svg,
+                  ) && <small>для своих SVG нет альтернативного набора</small>}
+                </label>
                 <label>
                   формат
                   <select

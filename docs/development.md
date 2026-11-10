@@ -4,7 +4,7 @@ The normal installation uses Docker Compose; see the [quick start](../README.md#
 
 ## Local processes
 
-With `originals/assets.zip` available, prepare the library and install frontend dependencies:
+With both `originals/assets.zip` and `originals/assets-small.zip` available, prepare the library and install frontend dependencies:
 
 ```bash
 node scripts/prepare-assets.mjs
@@ -43,3 +43,11 @@ Browser scenarios additionally need the API and Vite running. Use `CHROME_PATH` 
 For an isolated browser fixture without the private originals, `scripts/create-test-assets.mjs /tmp/syravec-test-public` creates synthetic vectors. Point the API's `CATALOG_PATH` to that directory's `assets/manifest.json` and set Vite's `SYRAVEC_TEST_PUBLIC_DIR` to `/tmp/syravec-test-public`. These fixtures are for checks, not the product library.
 
 CI uses mock model responses and synthetic geometry. It does not establish the artistic quality of a live model on the original illustrations. Live provider calls require an explicitly configured key and consume quota.
+
+For the real-source geometry check, serve the prepared library and run:
+
+```bash
+python3 scripts/check-svg-source-sets.py http://127.0.0.1:3000 originals/assets.zip originals/assets-small.zip --originals
+```
+
+This compares all served sources byte-for-byte with the archives and checks that the large/small main phones contain 155/96 paths. Synthetic checks deliberately use different geometry in the two sets; they cannot certify the correspondence of the private originals.

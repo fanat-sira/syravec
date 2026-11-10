@@ -78,21 +78,24 @@ jobs:
           grep -F 'sudo docker compose up --build -d' /tmp/assets-missing.log
       - name: Prepare a synthetic source archive for container smoke test
         run: |
-          mkdir -p originals
-          python3 - <<'PY'
-          import zipfile
-          names = ['Пазлы','Книга','Телефон','Наушники','Лампа','Кошелек','Ручка','Папка','Монета']
-          names = names + [n+'-1' for n in names] + ['Group 2136136344','Group 2136136347','Фон','Фон-1','Фон-2']
-          with zipfile.ZipFile('originals/assets.zip', 'w') as archive:
-              for name in names:
-                  archive.writestr(name+'.svg', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path fill="#7864d7" d="M0 0h100v100H0Z"/></svg>')
-          PY
+          python3 scripts/create-test-source-archives.py originals
       - name: One-command startup and HTTP smoke test
         run: |
           docker compose up --build -d --wait --wait-timeout 120
           curl -fsS http://127.0.0.1:3000/api/v1/health
           curl -fsS http://127.0.0.1:3000/assets/manifest.json
-          curl -fsS http://127.0.0.1:3000/assets/book-main.svg
+          python3 - <<'PYSMOKE'
+          import json, urllib.request
+          base='http://127.0.0.1:3000'
+          m=json.load(urllib.request.urlopen(base+'/assets/manifest.json'))
+          assert m['version']==2 and len(m['assets'])==20
+          for size in ['large','small']:
+              for asset in m['assets']:
+                  body=urllib.request.urlopen(base+asset['sets'][size]['assetUrl']).read()
+                  assert b'<svg' in body
+          print('both original-size source paths are served')
+          PYSMOKE
+          python3 scripts/check-svg-source-sets.py http://127.0.0.1:3000 originals/assets.zip originals/assets-small.zip
           python3 scripts/check-web-assets.py http://127.0.0.1:3000
       - name: Container logs
         if: always()

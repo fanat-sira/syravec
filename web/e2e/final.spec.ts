@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 const scene = {
-  version: 1,
+  version: 2,
+  illustrationSize: "large",
   canvas: { width: 1000, height: 1000, preset: "square" },
   palette: "violet",
   backgroundId: "background-square-violet",
@@ -10,7 +11,7 @@ const scene = {
       assetId: "book-main",
       x: 0.5,
       y: 0.5,
-      scale: 1,
+
       rotation: 0,
       opacity: 1,
       visible: true,

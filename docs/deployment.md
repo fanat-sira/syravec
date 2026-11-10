@@ -11,9 +11,9 @@ sudo install -d -m 750 -o gha-runner -g gha-runner \
   /opt/syravec /opt/syravec/originals
 ```
 
-Create `/opt/syravec/.env` from [`.env.example`](../.env.example), set the provider key and model, and make the file readable by the runner only. Place the private illustration archive at `/opt/syravec/originals/assets.zip`.
+Create `/opt/syravec/.env` from [`.env.example`](../.env.example), set the provider key and model, and make the file readable by the runner only. Place both private illustration archives at `/opt/syravec/originals/assets.zip` (large, original `(2)`) and `/opt/syravec/originals/assets-small.zip` (small, original `(3)`). Their original filenames are also accepted. The deployment preflight rejects a missing set before stopping existing services.
 
-The deployment does not copy a developer's `.env`, replace the server's credentials, or deliver the private archive. Configure GitHub's `production` environment and the runner for the repository. For a fork or another host, review the runner selection, registry path, application directory, and nginx hostname before enabling deployment.
+The deployment does not copy a developer's `.env`, replace the server's credentials, or deliver the private archives. Configure GitHub's `production` environment and the runner for the repository. For a fork or another host, review the runner selection, registry path, application directory, and nginx hostname before enabling deployment.
 
 ## Release flow
 
@@ -52,7 +52,7 @@ If your host uses another proxy, hostname, or nginx layout, adapt the files unde
 - `assets`: prepared SVG library, mounted read-only by API and web.
 - `api-data`: main-model usage counters, including the sliding per-IP and global windows.
 - `/opt/syravec/.env`: deployment configuration and provider credentials.
-- `/opt/syravec/originals/assets.zip`: private source library.
+- `/opt/syravec/originals/assets.zip` and `assets-small.zip`: private independent source libraries.
 
 Keep the same Compose project name during updates so it uses the same named volumes. Do not use `docker compose down -v` for a normal deployment. Browser projects are stored on each user's device, not in server volumes.
 
@@ -66,6 +66,6 @@ sudo docker compose ps -a
 sudo docker compose logs --tail=100 assets api web
 ```
 
-`assets` exiting successfully is expected. If preparation fails, inspect its log and the private archive before restarting. A healthy API alone does not confirm browser rendering or the quality of live model output.
+`assets` exiting successfully is expected. If preparation fails, inspect its log and both private archives before restarting. A healthy API alone does not confirm browser rendering or the quality of live model output.
 
 Updating the main-model limits in `.env` takes effect when the API is recreated. Existing calls remain counted when limits are lowered. Quota errors include `Retry-After`; manual editing and vector export stay available.

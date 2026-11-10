@@ -6,6 +6,7 @@ import {
 } from "zustand/middleware";
 import {
   emptyScene,
+  migrateScene,
   uid,
   type Asset,
   type Project,
@@ -67,6 +68,7 @@ interface State {
   revision: number;
   hydrated: boolean;
   storageError: string;
+  migrationNotice: string;
   newProject: () => void;
   openProject: (id: string) => void;
   removeProject: (id: string) => void;
@@ -98,6 +100,7 @@ export const useStore = create<State>()(
       revision: 0,
       hydrated: false,
       storageError: "",
+      migrationNotice: "",
       newProject: () =>
         set((s) => ({
           current: null,
@@ -142,6 +145,7 @@ export const useStore = create<State>()(
           revision: s.revision + 1,
         })),
       setScene: (scene, record = true) => {
+        scene = migrateScene(scene);
         const s = get(),
           p = s.projects.find((p) => p.id === s.current);
         if (p)
@@ -255,6 +259,30 @@ export const useStore = create<State>()(
     }),
     {
       name: "projects",
+      version: 2,
+      migrate: (raw) => {
+        const previous = raw as Pick<
+          State,
+          "projects" | "current" | "customAssets"
+        >;
+        return {
+          ...previous,
+          projects: (previous.projects ?? []).map((p) => ({
+            ...p,
+            scene: migrateScene(p.scene),
+            generations: p.generations?.map((g) => ({
+              ...g,
+              ...(g.scene ? { scene: migrateScene(g.scene) } : {}),
+            })),
+          })),
+          customAssets: (previous.customAssets ?? []).map((a) => ({
+            ...a,
+            nativeSize: a.nativeSize ?? "large",
+          })),
+          migrationNotice:
+            "старые проекты переведены на исходные размеры SVG; индивидуальные масштабы сброшены, визуальное совпадение может отличаться",
+        };
+      },
       storage: createJSONStorage(() => storage),
       partialize: (s) => ({
         projects: s.projects,

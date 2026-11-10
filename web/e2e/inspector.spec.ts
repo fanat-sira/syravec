@@ -6,7 +6,8 @@ test.beforeEach(async ({ page }) => {
   );
 });
 const baseScene = {
-  version: 1,
+  version: 2,
+  illustrationSize: "large",
   canvas: { width: 1000, height: 1000, preset: "square" },
   palette: "violet",
   backgroundId: "background-square-violet",
@@ -24,7 +25,7 @@ test("секции прокручиваются независимо, загол
       assetId: "book-main",
       x: 0.5,
       y: 0.5,
-      scale: 0.5,
+
       rotation: 0,
       opacity: 1,
       visible: true,
@@ -126,7 +127,7 @@ test("библиотека и свойства доступны в мобиль�
   await page.getByRole("button", { name: "добавить Книга на холст" }).click();
   await expect(page.locator(".layer-row.active")).toContainText("Книга");
   await expect(
-    page.getByRole("slider", { name: "масштаб", exact: true }),
+    page.getByRole("slider", { name: "поворот", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "закрыть слои", exact: true }).click();
   await expect(page.locator(".inspector")).not.toBeVisible();

@@ -38,7 +38,7 @@ func TestTemplate(t *testing.T) {
 			t.Fatal("missing assets")
 		}
 		for _, l := range sc.Layers {
-			if l.X < 0 || l.X > 1 || l.Y < 0 || l.Y > 1 || l.Scale <= 0 {
+			if l.X < 0 || l.X > 1 || l.Y < 0 || l.Y > 1 {
 				t.Fatalf("bad geometry: %+v", l)
 			}
 		}
@@ -55,7 +55,7 @@ func TestBadRequests(t *testing.T) {
 func TestSelectionContract(t *testing.T) {
 	s := fixture()
 	r := req()
-	for _, p := range []Plan{{Items: []Item{{AssetID: "book-main", X: .5, Y: .5, RelativeSize: 1, Rotation: 0}}}, {Items: []Item{{AssetID: "book-main", X: .5, Y: .5, RelativeSize: 1, Rotation: 0}, {AssetID: "fake", X: .5, Y: .5, RelativeSize: 1, Rotation: 0}}}, {Items: []Item{{AssetID: "book-main", X: -100, Y: .5, RelativeSize: 1, Rotation: 0}, {AssetID: "lamp-main", X: .5, Y: .5, RelativeSize: 1, Rotation: 0}}}} {
+	for _, p := range []Plan{{Items: []Item{{AssetID: "book-main", X: .5, Y: .5, Rotation: 0}}}, {Items: []Item{{AssetID: "book-main", X: .5, Y: .5, Rotation: 0}, {AssetID: "fake", X: .5, Y: .5, Rotation: 0}}}, {Items: []Item{{AssetID: "book-main", X: -100, Y: .5, Rotation: 0}, {AssetID: "lamp-main", X: .5, Y: .5, Rotation: 0}}}} {
 		if s.validatePlan(p, r) == nil {
 			t.Fatal("accepted invalid plan")
 		}
@@ -93,7 +93,7 @@ func TestProvider(t *testing.T) {
 		name, content string
 		status        int
 		want          bool
-	}{{"valid", `{"items":[{"assetId":"book-main","preferredX":0.5,"preferredY":0.5,"relativeSize":1,"rotation":0},{"assetId":"lamp-main","preferredX":0.7,"preferredY":0.3,"relativeSize":1,"rotation":0}]}`, 200, true}, {"unknown", `{"items":[{"assetId":"fake"}]}`, 200, false}, {"malformed", `not json`, 200, false}, {"trailing", `{"items":[]} {}`, 200, false}, {"provider failure", "", 429, false}} {
+	}{{"valid", `{"items":[{"assetId":"book-main","preferredX":0.5,"preferredY":0.5,"rotation":0},{"assetId":"lamp-main","preferredX":0.7,"preferredY":0.3,"rotation":0}]}`, 200, true}, {"unknown", `{"items":[{"assetId":"fake"}]}`, 200, false}, {"malformed", `not json`, 200, false}, {"trailing", `{"items":[]} {}`, 200, false}, {"provider failure", "", 429, false}} {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path != "/chat/completions" || r.Header.Get("Authorization") != "Bearer test-key" {
@@ -131,7 +131,7 @@ func TestCanceledProvider(t *testing.T) {
 func TestRefineReducesPileAndPreservesSelection(t *testing.T) {
 	s := fixture()
 	r := req()
-	p := Plan{Items: []Item{{AssetID: "book-main", X: .5, Y: .5, RelativeSize: 1.5, Rotation: 0}, {AssetID: "lamp-main", X: .5, Y: .5, RelativeSize: 1.5, Rotation: 0}}}
+	p := Plan{Items: []Item{{AssetID: "book-main", X: .5, Y: .5, Rotation: 0}, {AssetID: "lamp-main", X: .5, Y: .5, Rotation: 0}}}
 	sc := s.scene(p, r)
 	before := overlap(s.bounds(sc.Layers[0], sc.Canvas), s.bounds(sc.Layers[1], sc.Canvas))
 	sc, _ = s.refine(sc)

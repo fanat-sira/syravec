@@ -5,7 +5,6 @@ import {
   emptyScene,
   layer,
   palettes,
-  rotatedSize,
   type Asset,
   type Project,
 } from "./model";
@@ -20,15 +19,14 @@ const a: Asset = {
   assetUrl: "",
 };
 describe("завершенные сценарии сцены и переноса", () => {
-  it("смена формата сохраняет идентичность, порядок и пропорции без случайной обрезки", () => {
+  it("смена формата сохраняет идентичность, порядок и пропорции с исходными размерами и допустимым кадрированием", () => {
     const scene = emptyScene();
     scene.layers = [
-      { ...layer(a.id), x: 1.15, y: -0.1, scale: 5, rotation: 71 },
+      { ...layer(a.id), x: 1.15, y: -0.1, rotation: 71 },
       {
         ...layer(a.id),
         x: 0.85,
         y: 0.8,
-        scale: 1.2,
         rotation: -35,
         locked: true,
       },
@@ -39,17 +37,7 @@ describe("завершенные сценарии сцены и переноса
         scene.layers.map((l) => l.id),
       );
       expect(next.layers[1].locked).toBe(true);
-      for (const l of next.layers) {
-        const b = rotatedSize(next, l, a);
-        expect(l.x * next.canvas.width - b.w / 2).toBeGreaterThanOrEqual(0);
-        expect(l.y * next.canvas.height - b.h / 2).toBeGreaterThanOrEqual(0);
-        expect(l.x * next.canvas.width + b.w / 2).toBeLessThanOrEqual(
-          next.canvas.width,
-        );
-        expect(l.y * next.canvas.height + b.h / 2).toBeLessThanOrEqual(
-          next.canvas.height,
-        );
-      }
+      expect(next.layers).toEqual(scene.layers);
     }
   });
   it("проект переносит название, палитры, историю и svg, нужные предыдущим результатам", () => {

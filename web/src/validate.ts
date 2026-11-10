@@ -1,10 +1,18 @@
-import { type Scene, type Asset, type Project, type Generation } from "./model";
+import {
+  canvasFor,
+  migrateScene,
+  type Scene,
+  type Asset,
+  type Project,
+  type Generation,
+} from "./model";
 import { sanitize, parsePalette } from "./svg";
 export function validateScene(raw: unknown, assets: Asset[]): Scene {
   const s = raw as Scene;
   if (
     !s ||
-    s.version !== 1 ||
+    s.version !== 2 ||
+    !["large", "small"].includes(s.illustrationSize) ||
     !s.canvas ||
     !["square", "landscape", "portrait"].includes(s.canvas.preset) ||
     ![s.canvas.width, s.canvas.height].every(
@@ -15,6 +23,9 @@ export function validateScene(raw: unknown, assets: Asset[]): Scene {
     s.layers.length > 40
   )
     throw Error("неподдерживаемый формат проекта");
+  const expected = canvasFor(s.canvas.preset, s.illustrationSize);
+  if (s.canvas.width !== expected.width || s.canvas.height !== expected.height)
+    throw Error("размер холста не соответствует исходному набору");
   const customPalette =
     s.customPalette === undefined
       ? undefined
@@ -29,13 +40,12 @@ export function validateScene(raw: unknown, assets: Asset[]): Scene {
       !/^[-\w]+$/.test(l.id) ||
       ids.has(l.id) ||
       !assets.some((a) => a.id === l.assetId) ||
-      ![l.x, l.y, l.scale, l.rotation, l.opacity].every(Number.isFinite) ||
+      ![l.x, l.y, l.rotation, l.opacity].every(Number.isFinite) ||
+      "scale" in l ||
       l.x < -0.2 ||
       l.x > 1.2 ||
       l.y < -0.2 ||
       l.y > 1.2 ||
-      l.scale < 0.1 ||
-      l.scale > 6 ||
       Math.abs(l.rotation) > 3600 ||
       l.opacity < 0 ||
       l.opacity > 1 ||
@@ -43,6 +53,9 @@ export function validateScene(raw: unknown, assets: Asset[]): Scene {
       typeof l.locked !== "boolean"
     )
       throw Error("проект содержит неизвестные объекты или неверные параметры");
+    const asset = assets.find((a) => a.id === l.assetId)!;
+    if (asset.svg && (asset.nativeSize ?? "large") !== s.illustrationSize)
+      throw Error("у своего SVG нет исходника выбранного размера");
     ids.add(l.id);
     if (l.role !== undefined && !["focal", "support", "decor"].includes(l.role))
       throw Error("неизвестная роль объекта");
@@ -51,7 +64,6 @@ export function validateScene(raw: unknown, assets: Asset[]): Scene {
       assetId: l.assetId,
       x: l.x,
       y: l.y,
-      scale: l.scale,
       rotation: l.rotation,
       opacity: l.opacity,
       visible: l.visible,
@@ -68,7 +80,8 @@ export function validateScene(raw: unknown, assets: Asset[]): Scene {
   )
     throw Error("неизвестный фон");
   return {
-    version: 1,
+    version: 2,
+    illustrationSize: s.illustrationSize,
     canvas: {
       width: s.canvas.width,
       height: s.canvas.height,
@@ -102,7 +115,7 @@ export function readProject(
   if (
     !x ||
     (x.format !== undefined &&
-      (x.format !== "syravec-project" || x.version !== 1))
+      (x.format !== "syravec-project" || ![1, 2].includes(x.version ?? 0)))
   )
     throw Error("неподдерживаемая версия проекта");
   const customAssets: Asset[] = [];
@@ -134,11 +147,17 @@ export function readProject(
           assetUrl: "",
           variant: "main",
           tags: [],
+          nativeSize: a.nativeSize === "small" ? "small" : "large",
         });
     }
   }
   const known = [...assets, ...customAssets],
-    scene = validateScene(x.scene, known);
+    scene = validateScene(
+      (x.scene as unknown as { version: number })?.version === 1
+        ? migrateScene(x.scene)
+        : x.scene,
+      known,
+    );
   if (x.title !== undefined && typeof x.title !== "string")
     throw Error("неверное название проекта");
   if (
@@ -180,7 +199,16 @@ export function readProject(
       source: g.source,
       status: g.status,
       createdAt: g.createdAt,
-      ...(g.scene ? { scene: validateScene(g.scene, known) } : {}),
+      ...(g.scene
+        ? {
+            scene: validateScene(
+              (g.scene as unknown as { version: number }).version === 1
+                ? migrateScene(g.scene)
+                : g.scene,
+              known,
+            ),
+          }
+        : {}),
       ...(typeof g.error === "string" ? { error: g.error.slice(0, 2000) } : {}),
     };
   });
@@ -210,7 +238,7 @@ export function serializeProject(
   const text = JSON.stringify(
     {
       format: "syravec-project",
-      version: 1,
+      version: 2,
       title: project.title,
       scene: project.scene,
       messages: project.messages,

@@ -23,3 +23,9 @@ docs/source-colors.json
 
 # repository documentation is not needed in runtime builds
 docs/images/
+
+# prepared original source sets stay in the runtime volume
+web/public/assets/library-*/
+web/public/assets/.next-*/
+web/public/assets/.manifest-next.json
+web/public/assets/*.svg

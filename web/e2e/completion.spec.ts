@@ -20,14 +20,15 @@ test("форматы и все палитры сохраняют исходны�
     assetId: a.id,
     x: ((i % 5) + 0.5) / 5,
     y: (Math.floor(i / 5) + 0.5) / 4,
-    scale: 0.38,
+
     rotation: 0,
     opacity: 1,
     visible: true,
     locked: false,
   }));
   const scene = {
-    version: 1,
+    version: 2,
+    illustrationSize: "large",
     canvas: { width: 1000, height: 1000, preset: "square" },
     palette: "violet",
     backgroundId: "background-square-violet",
@@ -63,30 +64,14 @@ test("форматы и все палитры сохраняют исходны�
       .getByRole("combobox", { name: "формат композиции" })
       .selectOption(["portrait", "landscape", "square"][i]);
     await expect(page.locator(".layer-row")).toHaveCount(20);
-    const clipped = await page.locator(".artboard").evaluate((svg) => {
-      const vb = (svg as SVGSVGElement).viewBox.baseVal;
-      return [...svg.querySelectorAll(":scope > g > g[transform]")].some(
-        (g) => {
-          const b = (g as SVGGraphicsElement).getBBox(),
-            m = (g as SVGGraphicsElement).transform.baseVal.consolidate()!
-              .matrix;
-          const corners = [
-            [b.x, b.y],
-            [b.x + b.width, b.y],
-            [b.x, b.y + b.height],
-            [b.x + b.width, b.y + b.height],
-          ].map(([x, y]) => new DOMPoint(x, y).matrixTransform(m));
-          return corners.some(
-            (p) =>
-              p.x < -0.1 ||
-              p.y < -0.1 ||
-              p.x > vb.width + 0.1 ||
-              p.y > vb.height + 0.1,
-          );
-        },
-      );
-    });
-    expect(clipped).toBe(false);
+    const factors = await page.locator(".artboard").evaluate((svg) =>
+      [...svg.querySelectorAll(":scope > g > g[transform]")].map((g) => {
+        const m = (g as SVGGraphicsElement).transform.baseVal.consolidate()!
+          .matrix;
+        return Math.hypot(m.a, m.b);
+      }),
+    );
+    for (const factor of factors) expect(factor).toBeCloseTo(1, 9);
   }
 });
 test("блокировка защищает от удаления и перестановки, скрытый слой остается в экспорте", async ({

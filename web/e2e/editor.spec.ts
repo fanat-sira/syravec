@@ -104,7 +104,7 @@ test("ошибка генерации сохраняет сцену", async ({ p
   expect(await page.locator(".artboard").innerHTML()).toBe(before);
 });
 
-test("указатель двигает, масштабирует и вращает слой с учетом масштаба холста", async ({
+test("указатель двигает и вращает слой, индивидуального масштаба нет", async ({
   page,
 }) => {
   await page.goto("/");
@@ -121,21 +121,10 @@ test("указатель двигает, масштабирует и враща�
   await page.mouse.move(point.x - 40, point.y - 25, { steps: 5 });
   await page.mouse.up();
   expect(Number(await x.inputValue())).toBeLessThan(initial);
-  const handle = page.locator('[aria-label="изменить размер"]').last();
-  const hb = (await handle.boundingBox())!;
-  await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(hb.x + hb.width / 2 + 25, hb.y + hb.height / 2 + 20, {
-    steps: 5,
-  });
-  await page.mouse.up();
-  expect(
-    Number(
-      await page
-        .getByRole("slider", { name: "масштаб", exact: true })
-        .inputValue(),
-    ),
-  ).not.toBe(1.1);
+  await expect(page.locator('[aria-label="изменить размер"]')).toHaveCount(0);
+  await expect(
+    page.getByRole("slider", { name: "масштаб", exact: true }),
+  ).toHaveCount(0);
   const rotate = page.locator('[aria-label="повернуть объект"]'),
     rb = (await rotate.boundingBox())!;
   await page.mouse.move(rb.x + rb.width / 2, rb.y + rb.height / 2);
@@ -153,7 +142,7 @@ test("указатель двигает, масштабирует и враща�
   ).not.toBe(8);
   await page.getByRole("button", { name: "блокировка слоя" }).click();
   await expect(
-    page.getByRole("slider", { name: "масштаб", exact: true }),
+    page.getByRole("slider", { name: "поворот", exact: true }),
   ).toBeDisabled();
 });
 
@@ -172,7 +161,8 @@ test("запоздавший ответ не заменяет ручную пр�
     await r.fulfill({
       json: {
         scene: {
-          version: 1,
+          version: 2,
+          illustrationSize: "large",
           canvas: { width: 1000, height: 1000, preset: "square" },
           palette: "violet",
           backgroundId: "background-square-violet",
@@ -182,7 +172,7 @@ test("запоздавший ответ не заменяет ручную пр�
               assetId: "coin-main",
               x: 0.5,
               y: 0.5,
-              scale: 1,
+
               rotation: 0,
               opacity: 1,
               visible: true,

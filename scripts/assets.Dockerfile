@@ -9,5 +9,5 @@ RUN apk add --no-cache unzip rsvg-convert
 WORKDIR /app
 COPY --from=audit /asset-audit /usr/local/bin/asset-audit
 COPY scripts/prepare-assets.mjs ./scripts/prepare-assets.mjs
-ENV SOURCE_ARCHIVE="/originals/assets.zip" ASSET_OUTPUT_ROOT=/output ASSET_AUDIT_BIN=/usr/local/bin/asset-audit
+ENV SOURCE_DIR=/originals ASSET_OUTPUT_ROOT=/output ASSET_AUDIT_BIN=/usr/local/bin/asset-audit
 CMD ["node", "scripts/prepare-assets.mjs"]

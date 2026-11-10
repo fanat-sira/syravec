@@ -2,6 +2,7 @@ import DOMPurify from "dompurify";
 import {
   palettes,
   transform,
+  sourceKey,
   type Asset,
   type Scene,
   type Palette,
@@ -152,7 +153,12 @@ export function exportSVG(
   const body = scene.layers
     .map((l) => {
       const a = assets.find((a) => a.id === l.assetId),
-        raw = sources[l.assetId] ?? a?.svg;
+        raw =
+          sources[sourceKey(l.assetId, scene.illustrationSize)] ??
+          (scene.illustrationSize === "large"
+            ? sources[l.assetId]
+            : undefined) ??
+          a?.svg;
       if (!a || !raw) throw Error("исходник объекта не загружен");
       return `<g id="layer-${l.id}" display="${l.visible ? "inline" : "none"}" opacity="${l.opacity}" transform="${transform(scene, l, a)}">${markup(raw, `object-${l.id}`, p, !a.svg)}</g>`;
     })
@@ -199,7 +205,13 @@ export function backgroundMarkup(
     scene.backgroundId ||
     "background-square-" +
       (scene.palette === "custom" ? "violet" : scene.palette);
-  const raw = sources[backgroundId];
+  const raw =
+    sources[sourceKey(backgroundId, scene.illustrationSize)] ??
+    (scene.illustrationSize === "large" ? sources[backgroundId] : undefined);
   if (!raw) return `<rect width="${w}" height="${h}" fill="${p.light}"/>`;
-  return `<svg x="0" y="0" width="${w}" height="${h}" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice">${markup(raw, "bg", p, scene.palette === "custom")}</svg>`;
+  const viewBox = new DOMParser()
+    .parseFromString(raw, "image/svg+xml")
+    .documentElement.getAttribute("viewBox");
+  if (!viewBox) throw Error("у фона нет исходного viewBox");
+  return `<svg x="0" y="0" width="${w}" height="${h}" viewBox="${viewBox}" preserveAspectRatio="xMidYMid slice">${markup(raw, "bg", p, scene.palette === "custom")}</svg>`;
 }

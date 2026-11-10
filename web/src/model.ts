@@ -41,7 +41,18 @@ export const palettes: Palette[] = [
     soft: "#beebeb",
   },
 ];
+export type IllustrationSize = "large" | "small";
+export interface AssetGeometry {
+  viewBox: number[];
+  assetUrl: string;
+  visualBounds?: number[];
+  occupancy?: number[];
+  visualWeight?: number;
+  centroid?: number[];
+}
 export interface Asset {
+  sets?: Record<IllustrationSize, AssetGeometry>;
+  nativeSize?: IllustrationSize;
   id: string;
   displayName: string;
   variant: "main" | "background";
@@ -60,7 +71,6 @@ export interface Layer {
   assetId: string;
   x: number;
   y: number;
-  scale: number;
   rotation: number;
   opacity: number;
   visible: boolean;
@@ -68,7 +78,8 @@ export interface Layer {
   role?: "focal" | "support" | "decor";
 }
 export interface Scene {
-  version: 1;
+  version: 2;
+  illustrationSize: IllustrationSize;
   canvas: {
     width: number;
     height: number;
@@ -99,7 +110,8 @@ export interface Project {
   updatedAt: number;
 }
 export const emptyScene = (): Scene => ({
-  version: 1,
+  version: 2,
+  illustrationSize: "large",
   canvas: { width: 1000, height: 1000, preset: "square" },
   palette: "violet",
   backgroundId: "background-square-violet",
@@ -111,25 +123,47 @@ export const layer = (assetId: string): Layer => ({
   assetId,
   x: 0.5,
   y: 0.5,
-  scale: 1.5,
   rotation: 0,
   opacity: 1,
   visible: true,
   locked: false,
 });
-export function transform(s: Scene, l: Layer, a: Asset) {
-  const [vx, vy, vw, vh] = a.viewBox,
-    k =
-      ((0.4 * Math.min(s.canvas.width, s.canvas.height)) / Math.max(vw, vh)) *
-      l.scale;
-  return `translate(${l.x * s.canvas.width} ${l.y * s.canvas.height}) rotate(${l.rotation}) scale(${k}) translate(${-vx - vw / 2} ${-vy - vh / 2})`;
+// Shared by every object in both source libraries. No per-layer multiplier.
+export const OBJECT_FACTOR = 1;
+export function canvasFor(
+  preset: Scene["canvas"]["preset"],
+  illustrationSize: IllustrationSize = "large",
+) {
+  const small = illustrationSize === "small";
+  return {
+    preset,
+    width: preset === "portrait" ? (small ? 375 : 750) : small ? 500 : 1000,
+    height: preset === "landscape" ? (small ? 317 : 633) : small ? 500 : 1000,
+  };
 }
-export function size(s: Scene, l: Layer, a: Asset) {
-  const k =
-    ((0.4 * Math.min(s.canvas.width, s.canvas.height)) /
-      Math.max(a.viewBox[2], a.viewBox[3])) *
-    l.scale;
-  return { w: a.viewBox[2] * k, h: a.viewBox[3] * k };
+export function assetForSize(
+  a: Asset,
+  illustrationSize: IllustrationSize,
+): Asset {
+  if (a.svg) return a;
+  const geometry = a.sets?.[illustrationSize];
+  if (geometry) return { ...a, ...geometry };
+  if (illustrationSize === "large" && !a.sets) return a;
+  throw Error("исходный SVG выбранного размера недоступен");
+}
+export function sourceKey(id: string, illustrationSize: IllustrationSize) {
+  return `${illustrationSize}:${id}`;
+}
+export function transform(s: Scene, l: Layer, a: Asset) {
+  const [vx, vy, vw, vh] = assetForSize(a, s.illustrationSize).viewBox;
+  return `translate(${l.x * s.canvas.width} ${l.y * s.canvas.height}) rotate(${l.rotation}) translate(${-vx - vw / 2} ${-vy - vh / 2})`;
+}
+export function size(s: Scene, _l: Layer, a: Asset) {
+  const active = assetForSize(a, s.illustrationSize);
+  return {
+    w: active.viewBox[2] * OBJECT_FACTOR,
+    h: active.viewBox[3] * OBJECT_FACTOR,
+  };
 }
 export function arrange(
   ids: string[],
@@ -162,14 +196,6 @@ export function arrange(
         : n <= 3
           ? points[i][1]
           : (Math.floor(i / cols) + 0.5) / rows,
-    scale:
-      n === 1
-        ? 1.8
-        : n <= 3
-          ? i === 0
-            ? 1.7
-            : 1.1
-          : Math.min(1.1, 2.2 / Math.sqrt(n)),
     rotation: (((i + seed) % 3) - 1) * 8,
   }));
   layers.sort(
@@ -190,81 +216,64 @@ export function rotatedSize(scene: Scene, l: Layer, a: Asset) {
     h: Math.abs(w * Math.sin(r)) + Math.abs(h * Math.cos(r)),
   };
 }
-export function fitScene(scene: Scene, assets: Asset[]): Scene {
-  const { width: w, height: h } = scene.canvas;
-  const layers = scene.layers.map((original) => {
-    const a = assets.find((a) => a.id === original.assetId);
-    if (!a) return original;
-    const l = { ...original },
-      bounds = rotatedSize(scene, l, a),
-      factor = Math.min(1, (w * 0.9) / bounds.w, (h * 0.9) / bounds.h);
-    l.scale = Math.max(0.1, l.scale * factor);
-    const b = rotatedSize(scene, l, a);
-    l.x = Math.max(b.w / 2 / w + 0.035, Math.min(1 - b.w / 2 / w - 0.035, l.x));
-    l.y = Math.max(b.h / 2 / h + 0.035, Math.min(1 - b.h / 2 / h - 0.035, l.y));
-    return l;
-  });
-  return { ...scene, layers };
+// Kept as a compatibility utility: fixed native dimensions never fit by shrinking.
+export function fitScene(scene: Scene, _assets: Asset[]): Scene {
+  return scene;
 }
 export function adaptFormat(
   scene: Scene,
   preset: Scene["canvas"]["preset"],
+  _assets: Asset[],
+): Scene {
+  return {
+    ...scene,
+    canvas: canvasFor(preset, scene.illustrationSize),
+    backgroundId: `background-${preset === "portrait" ? "square" : preset}-${scene.palette === "custom" ? "violet" : scene.palette}`,
+  };
+}
+export function changeIllustrationSize(
+  scene: Scene,
+  illustrationSize: IllustrationSize,
   assets: Asset[],
 ): Scene {
-  const canvas = {
-    width: preset === "portrait" ? 750 : 1000,
-    height: preset === "landscape" ? 633 : 1000,
-    preset,
+  if (
+    illustrationSize !== scene.illustrationSize &&
+    scene.layers.some((l) => assets.find((a) => a.id === l.assetId)?.svg)
+  )
+    throw Error(
+      "для загруженных SVG нет второго исходного набора; убери их из композиции, чтобы сменить размер иллюстраций",
+    );
+  for (const l of scene.layers)
+    assetForSize(
+      assets.find((a) => a.id === l.assetId)!,
+      illustrationSize,
+    );
+  return {
+    ...scene,
+    illustrationSize,
+    canvas: canvasFor(scene.canvas.preset, illustrationSize),
   };
-  const next = fitScene(
-    {
-      ...scene,
-      canvas,
-      backgroundId:
-        preset === "portrait" || scene.palette === "custom"
-          ? ""
-          : `background-${preset}-${scene.palette}`,
-    },
-    assets,
-  );
-  // Preserve object proportions, then gently separate critical overlaps in the new frame
-  const boxes = next.layers
-    .filter((l) => l.visible)
-    .map((l) => {
-      const a = assets.find((a) => a.id === l.assetId)!;
-      const b = rotatedSize(next, l, a);
-      return { l, w: b.w / canvas.width, h: b.h / canvas.height };
-    });
-  for (let pass = 0; pass < 6; pass++) {
-    let changed = false;
-    for (let i = 0; i < boxes.length; i++)
-      for (let j = 0; j < i; j++) {
-        const a = boxes[i],
-          b = boxes[j];
-        if (
-          a.l.assetId.endsWith("-background") ||
-          b.l.assetId.endsWith("-background")
-        )
-          continue;
-        const dx = a.l.x - b.l.x,
-          dy = a.l.y - b.l.y,
-          ix = (a.w + b.w) / 2 - Math.abs(dx),
-          iy = (a.h + b.h) / 2 - Math.abs(dy);
-        if (
-          ix <= 0 ||
-          iy <= 0 ||
-          ix * iy < Math.min(a.w * a.h, b.w * b.h) * 0.35
-        )
-          continue;
-        const move = next.layers.find((l) => l.id === a.l.id)!;
-        if (ix < iy) move.x += Math.sign(dx || 1) * Math.min(0.08, ix * 0.4);
-        else move.y += Math.sign(dy || 1) * Math.min(0.08, iy * 0.4);
-        changed = true;
-      }
-    if (!changed) break;
-    const fitted = fitScene(next, assets);
-    next.layers = fitted.layers;
-    for (const b of boxes) b.l = next.layers.find((l) => l.id === b.l.id)!;
-  }
-  return next;
+}
+// Legacy object scales are deliberately discarded; positions and editing state survive.
+export function migrateScene(raw: unknown): Scene {
+  const scene = raw as Scene;
+  const illustrationSize =
+    scene.illustrationSize === "small" ? "small" : "large";
+  return {
+    ...scene,
+    version: 2,
+    illustrationSize,
+    canvas: canvasFor(scene.canvas.preset, illustrationSize),
+    layers: scene.layers.map((l) => ({
+      id: l.id,
+      assetId: l.assetId,
+      x: l.x,
+      y: l.y,
+      rotation: l.rotation,
+      opacity: l.opacity,
+      visible: l.visible,
+      locked: l.locked,
+      ...(l.role ? { role: l.role } : {}),
+    })),
+  };
 }

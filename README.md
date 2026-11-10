@@ -14,8 +14,8 @@ Describe a visual idea or arrange objects from the supplied illustration library
 
 - **Compose from an idea:** describe a metaphor, headline, or scene; AI selects and arranges library objects.
 - **Compose from objects:** add objects to the canvas and use **«перекомпоновать объекты»** in Layers. AI rearranges exactly that set.
-- **Edit vectors:** move, scale, rotate, duplicate with Alt-drag, reorder, hide, and lock layers; undo or redo completed actions.
-- **Adjust the composition:** square, landscape, and portrait formats; three palettes and custom palette upload.
+- **Edit vectors:** move, rotate, duplicate with Alt-drag, reorder, hide, and lock layers; undo or redo completed actions.
+- **Adjust the composition:** square, landscape, and portrait formats; two original illustration sizes, three palettes, and custom palette upload.
 - **Keep projects:** browser autosave, project names, and restoration after reload.
 - **Export SVG:** standalone, editable vectors with separate object groups and unique internal IDs.
 
@@ -35,7 +35,14 @@ mkdir -p originals
 cp .env.example .env
 ```
 
-Place the supplied source archive at **`originals/assets.zip`**, without extracting it. The original illustrations are distributed separately and are not included in this repository. Docker prepares the library automatically; a missing or invalid archive stops startup with instructions.
+Place both supplied source archives in `originals/`, without extracting them:
+
+| Original | Local filename |
+| --- | --- |
+| `Тестовое _ иллюстрации(2).zip` — large | `assets.zip` |
+| `Тестовое _ иллюстрации(3).zip` — small | `assets-small.zip` |
+
+The original filenames are also accepted. The private illustrations are distributed separately and are not included in Git or Docker images. Docker prepares both libraries automatically; a missing, ambiguous, or invalid source stops preparation with instructions. Small vectors come from their own original archive, never from scaling large vectors.
 
 For AI generation, set your OpenRouter key in `.env`:
 
@@ -63,7 +70,7 @@ sudo docker compose down
 1. Enter an idea in Composer, or open an example to explore the editor.
 2. Add library objects with `+` or drag their thumbnails onto the canvas.
 3. To rearrange the current objects, use **«перекомпоновать объекты»** at the bottom of Layers. Repeat for another layout; one Undo restores the previous scene.
-4. Change the format or palette in Properties, then use **«экспорт svg»** above the canvas.
+4. Change the illustration size, format, or palette in Properties, then use **«экспорт svg»** above the canvas.
 
 The layer action rearranges the current canvas, including a single object, repeated copies, uploaded SVGs, and locked layers. Copies keep separate IDs. Explicit rearrangement can move locked layers; their manual lock flags remain set. A literal list of catalog names in Composer uses the local template; other text goes directly to the main model.
 
@@ -76,6 +83,8 @@ Projects and uploaded SVGs stay in the current browser's IndexedDB. Clearing sit
 | Duplicate an object | Alt + drag |
 | Undo / redo | Ctrl / ⌘ + Z / Ctrl / ⌘ + Shift + Z |
 | Send / new line | Enter / Shift + Enter |
+
+Objects retain their native SVG dimensions with one shared factor of 1; individual resizing is unavailable. **«размер иллюстраций»** switches the whole composition between the two original libraries. Positions, rotations, and layer order stay intact; intentional cropping is allowed. Compositions containing uploaded SVGs cannot switch size because those files have no alternative source. Older projects are migrated to native dimensions, which can change their appearance.
 
 View zoom and panning do not change the exported composition. Failed or cancelled generation keeps the current scene.
 
@@ -100,7 +109,7 @@ After changing `.env`, run `sudo docker compose up -d` to recreate affected cont
 
 ## How it works
 
-The model receives catalog descriptions, proportions, and visual metadata. It returns a JSON scene plan, never SVG source. Go validates the object IDs and parameters, then adjusts the layout. The canvas and SVG export use the same vector transforms.
+The model receives catalog descriptions, proportions, and visual metadata. It returns a JSON scene plan, never SVG source. Go validates the object IDs and parameters, then adjusts the layout. The canvas and SVG export use the same vector transforms. AI determines positions, rotations, roles, and order; it cannot resize objects. See [source sets and sizes](docs/illustration-sizes.md) for canvas dimensions and source verification.
 
 - [`api/`](api/) — HTTP API, model client, layout engine, and quotas.
 - [`web/`](web/) — React editor, SVG rendering, export, and browser storage.

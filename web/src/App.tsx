@@ -28,6 +28,9 @@ import {
   uid,
   arrange,
   adaptFormat,
+  changeIllustrationSize,
+  assetForSize,
+  sourceKey,
   type Asset,
   type Scene,
 } from "./model";
@@ -171,8 +174,11 @@ export default function App() {
     paletteRef = useRef<HTMLInputElement>(null),
     seed = useRef(Math.floor(Math.random() * 1_000_000));
   const assets = useMemo(
-    () => [...catalog, ...st.customAssets],
-    [catalog, st.customAssets],
+    () => [
+      ...catalog.map((a) => assetForSize(a, scene.illustrationSize)),
+      ...st.customAssets,
+    ],
+    [catalog, st.customAssets, scene.illustrationSize],
   );
   const selected = scene.layers.find((l) => l.id === st.selected);
   useEffect(() => {
@@ -190,13 +196,21 @@ export default function App() {
         const r = await fetch("/assets/manifest.json");
         if (!r.ok) throw Error();
         const m = await r.json();
+        if (m.version !== 2) throw Error("нужны оба исходных набора SVG");
         const all = [...m.assets, ...m.backgrounds] as Asset[];
         const pairs = await Promise.all(
-          all.map(async (a) => {
-            const res = await fetch(a.assetUrl);
-            if (!res.ok) throw Error();
-            return [a.id, sanitize(await res.text()).svg] as const;
-          }),
+          all.flatMap((a) =>
+            (["large", "small"] as const).map(async (illustrationSize) => {
+              const geometry = a.sets?.[illustrationSize];
+              if (!geometry) throw Error("неполная библиотека SVG");
+              const res = await fetch(geometry.assetUrl);
+              if (!res.ok) throw Error();
+              return [
+                sourceKey(a.id, illustrationSize),
+                sanitize(await res.text()).svg,
+              ] as const;
+            }),
+          ),
         );
         if (!cancelled) {
           setCatalog(m.assets);
@@ -206,7 +220,7 @@ export default function App() {
       } catch {
         if (!cancelled) {
           setLoadError(
-            "библиотека SVG недоступна. положи исходный архив в originals/assets.zip и выполни sudo docker compose up --build -d. подробности — в README.",
+            "библиотека SVG недоступна. положи большой и малый исходные архивы в originals/assets.zip и originals/assets-small.zip и выполни sudo docker compose up --build -d. подробности — в README.",
           );
           setLoading(false);
         }
@@ -225,6 +239,12 @@ export default function App() {
       controller.current?.abort();
     };
   }, []);
+  useEffect(() => {
+    if (st.migrationNotice) {
+      setNotice(st.migrationNotice);
+      useStore.setState({ migrationNotice: "" });
+    }
+  }, [st.migrationNotice]);
   useEffect(() => {
     if (!notice) return;
     const t = setTimeout(() => setNotice(""), 7000);
@@ -282,6 +302,10 @@ export default function App() {
     st.select(null);
   }
   function add(a: Asset, point?: { x: number; y: number }) {
+    if (a.svg && (a.nativeSize ?? "large") !== scene.illustrationSize) {
+      setNotice("у этого SVG нет версии для текущего размера иллюстраций");
+      return;
+    }
     if (scene.layers.length >= 40) {
       setNotice("на холсте уже 40 объектов");
       return;
@@ -308,6 +332,13 @@ export default function App() {
       Math.max(0, Math.min(1, pt.x / scene.canvas.width)),
       Math.max(0, Math.min(1, pt.y / scene.canvas.height)),
     );
+  }
+  function illustrationSize(value: Scene["illustrationSize"]) {
+    try {
+      change(changeIllustrationSize(scene, value, assets));
+    } catch (error) {
+      setNotice((error as Error).message);
+    }
   }
   function format(preset: Scene["canvas"]["preset"]) {
     change(adaptFormat(scene, preset, assets));
@@ -337,6 +368,7 @@ export default function App() {
         signal: ac.signal,
         body: JSON.stringify({
           mode: fromLayers ? "selection" : "auto",
+          illustrationSize: snapshot.illustrationSize,
           prompt: fromLayers ? "" : text.trim(),
           assetIds: fromLayers ? snapshot.layers.map((l) => l.assetId) : [],
           customAssets: fromLayers
@@ -348,6 +380,7 @@ export default function App() {
                     id,
                     displayName: asset.displayName.slice(0, 200),
                     viewBox: asset.viewBox,
+                    illustrationSize: asset.nativeSize ?? "large",
                   };
                 })
             : undefined,
@@ -395,7 +428,6 @@ export default function App() {
             ...original,
             x: planned.x,
             y: planned.y,
-            scale: planned.scale,
             rotation: planned.rotation,
             role: planned.role,
           };
@@ -462,6 +494,7 @@ export default function App() {
           viewBox: data.viewBox,
           assetUrl: "",
           svg: data.svg,
+          nativeSize: scene.illustrationSize,
         };
         st.addAsset(a);
         addFromUpload(a);
@@ -840,6 +873,7 @@ export default function App() {
               upload={() => fileRef.current?.click()}
               uploadPalette={() => paletteRef.current?.click()}
               format={format}
+              illustrationSize={illustrationSize}
               open={inspectorOpen}
               close={() => setInspectorOpen(false)}
               libraryExpanded={library}

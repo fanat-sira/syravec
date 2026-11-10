@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const objectFactor = 1.0
+
 type box struct{ x, y, w, h float64 }
 
 func positiveMod(value, divisor int) int { return (value%divisor + divisor) % divisor }
@@ -61,7 +63,7 @@ func (s *Server) asset(id string) Asset {
 func (s *Server) bounds(l Layer, c Canvas) box {
 	a := s.asset(l.AssetID)
 	rad := l.Rotation * math.Pi / 180
-	k := .4 * float64(min(c.Width, c.Height)) / math.Max(a.ViewBox[2], a.ViewBox[3]) * l.Scale
+	k := objectFactor
 	w := (math.Abs(a.ViewBox[2]*math.Cos(rad)) + math.Abs(a.ViewBox[3]*math.Sin(rad))) * k / float64(c.Width)
 	h := (math.Abs(a.ViewBox[2]*math.Sin(rad)) + math.Abs(a.ViewBox[3]*math.Cos(rad))) * k / float64(c.Height)
 	return box{l.X - w/2, l.Y - h/2, w, h}
@@ -71,15 +73,7 @@ func overlap(a, b box) float64 {
 	h := math.Max(0, math.Min(a.y+a.h, b.y+b.h)-math.Max(a.y, b.y))
 	return w * h / math.Max(1e-9, math.Min(a.w*a.h, b.w*b.h))
 }
-func (s *Server) fit(l Layer, c Canvas) Layer {
-	b := s.bounds(l, c)
-	factor := math.Min(1, math.Min(.9/b.w, .9/b.h))
-	l.Scale = math.Max(.1, l.Scale*factor)
-	b = s.bounds(l, c)
-	l.X = math.Max(b.w/2+.035, math.Min(1-b.w/2-.035, l.X))
-	l.Y = math.Max(b.h/2+.035, math.Min(1-b.h/2-.035, l.Y))
-	return l
-}
+
 func (s *Server) alpha(l Layer, c Canvas, x, y float64) float64 {
 	a := s.asset(l.AssetID)
 	if len(a.Occupancy) != 64 {
@@ -87,7 +81,7 @@ func (s *Server) alpha(l Layer, c Canvas, x, y float64) float64 {
 	}
 	angle := l.Rotation * math.Pi / 180
 	dx, dy := (x-l.X)*float64(c.Width), (y-l.Y)*float64(c.Height)
-	k := .4 * float64(min(c.Width, c.Height)) / math.Max(a.ViewBox[2], a.ViewBox[3]) * l.Scale
+	k := objectFactor
 	u := .5 + (dx*math.Cos(angle)+dy*math.Sin(angle))/(a.ViewBox[2]*k)
 	v := .5 + (-dx*math.Sin(angle)+dy*math.Cos(angle))/(a.ViewBox[3]*k)
 	if u < 0 || u >= 1 || v < 0 || v >= 1 {
@@ -118,7 +112,7 @@ func (s *Server) inkOverlap(a, b Layer, c Canvas) float64 {
 		for _, v := range asset.Occupancy {
 			density += v / 64
 		}
-		k := .4 * float64(min(c.Width, c.Height)) / math.Max(asset.ViewBox[2], asset.ViewBox[3]) * l.Scale
+		k := objectFactor
 		return asset.ViewBox[2] * asset.ViewBox[3] * k * k / float64(c.Width*c.Height) * density
 	}
 	return math.Min(1, w*h*sum/36/math.Max(1e-8, math.Min(mass(a), mass(b))))
@@ -135,7 +129,7 @@ func (s *Server) layoutScore(sc Scene, original []Layer) float64 {
 		if base.Role == "focal" {
 			importance = 2
 		}
-		score += importance*(math.Pow(l.X-base.X, 2)+math.Pow(l.Y-base.Y, 2))*.65 + math.Pow(math.Log(l.Scale/base.Scale), 2)*.22
+		score += importance * (math.Pow(l.X-base.X, 2) + math.Pow(l.Y-base.Y, 2)) * .65
 		a := s.asset(l.AssetID)
 		b := s.bounds(l, sc.Canvas)
 		weight := a.VisualWeight
@@ -145,7 +139,7 @@ func (s *Server) layoutScore(sc Scene, original []Layer) float64 {
 		m := b.w * b.h * weight
 		px, py := l.X, l.Y
 		if len(a.Centroid) == 2 {
-			k := .4 * float64(min(sc.Canvas.Width, sc.Canvas.Height)) / math.Max(a.ViewBox[2], a.ViewBox[3]) * l.Scale
+			k := objectFactor
 			dx, dy := (a.Centroid[0]-.5)*a.ViewBox[2]*k, (a.Centroid[1]-.5)*a.ViewBox[3]*k
 			rad := l.Rotation * math.Pi / 180
 			px += (dx*math.Cos(rad) - dy*math.Sin(rad)) / float64(sc.Canvas.Width)
@@ -169,9 +163,6 @@ func (s *Server) layoutScore(sc Scene, original []Layer) float64 {
 }
 func (s *Server) refine(sc Scene) (Scene, []string) {
 	sort.SliceStable(sc.Layers, func(i, j int) bool { return !mainObject(sc.Layers[i]) && mainObject(sc.Layers[j]) })
-	for i, l := range sc.Layers {
-		sc.Layers[i] = s.fit(l, sc.Canvas)
-	}
 	original := append([]Layer(nil), sc.Layers...)
 	order := []int{}
 	for i, l := range sc.Layers {
@@ -187,23 +178,21 @@ func (s *Server) refine(sc Scene) (Scene, []string) {
 			current := sc.Layers[i]
 			best := current
 			score := s.layoutScore(sc, original)
-			for _, shrink := range []float64{1, .9} {
-				for _, offset := range offsets {
-					candidate := current
-					candidate.X += offset[0]
-					candidate.Y += offset[1]
-					candidate.Scale *= shrink
-					candidate = s.fit(candidate, sc.Canvas)
-					sc.Layers[i] = candidate
-					value := s.layoutScore(sc, original)
-					if value+1e-8 < score {
-						score = value
-						best = candidate
-					}
+			for _, offset := range offsets {
+				candidate := current
+				candidate.X += offset[0]
+				candidate.Y += offset[1]
+				candidate.X = math.Max(-.2, math.Min(1.2, candidate.X))
+				candidate.Y = math.Max(-.2, math.Min(1.2, candidate.Y))
+				sc.Layers[i] = candidate
+				value := s.layoutScore(sc, original)
+				if value+1e-8 < score {
+					score = value
+					best = candidate
 				}
 			}
 			sc.Layers[i] = best
-			if best.X != current.X || best.Y != current.Y || best.Scale != current.Scale {
+			if best.X != current.X || best.Y != current.Y {
 				changed = true
 			}
 		}

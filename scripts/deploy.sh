@@ -5,7 +5,8 @@ set -eu
 : "${SYRAVEC_TAG:?set SYRAVEC_TAG}"
 case "$SYRAVEC_TAG" in *[!a-zA-Z0-9_.-]*|'') echo 'invalid release tag' >&2; exit 1;; esac
 [ -f .env ] || { echo 'create .env on the host first (see README)' >&2; exit 1; }
-[ -f 'originals/assets.zip' ] || { echo 'provide the private SVG archive in originals/ first' >&2; exit 1; }
+[ -f 'originals/assets.zip' ] || [ -f 'originals/Тестовое _ иллюстрации(2).zip' ] || { echo 'provide the large SVG archive in originals/assets.zip' >&2; exit 1; }
+[ -f 'originals/assets-small.zip' ] || [ -f 'originals/Тестовое _ иллюстрации(3).zip' ] || { echo 'provide the small original SVG archive in originals/assets-small.zip' >&2; exit 1; }
 compose() { docker compose -f compose.yaml -f compose.release.yaml "$@"; }
 compose config -q
 compose pull

@@ -10,6 +10,7 @@ import {
   type Scene,
   type Layer,
   type Asset,
+  sourceKey,
   size,
   transform,
   uid,
@@ -269,14 +270,6 @@ export function Canvas({
     if (d.kind === "move") {
       l.x = Math.max(-0.2, Math.min(1.2, l.x + (pt.x - d.start.x) / w));
       l.y = Math.max(-0.2, Math.min(1.2, l.y + (pt.y - d.start.y) / h));
-    } else if (d.kind === "scale") {
-      l.scale = Math.max(
-        0.1,
-        Math.min(
-          6,
-          (l.scale * Math.hypot(pt.x - l.x * w, pt.y - l.y * h)) / d.distance,
-        ),
-      );
     } else {
       l.rotation =
         d.layer.rotation +
@@ -374,7 +367,12 @@ export function Canvas({
                 .map((original) => {
                   const l = draft?.id === original.id ? draft : original,
                     asset = assets.find((a) => a.id === l.assetId),
-                    raw = sources[l.assetId] ?? asset?.svg;
+                    raw =
+                      sources[sourceKey(l.assetId, scene.illustrationSize)] ??
+                      (scene.illustrationSize === "large"
+                        ? sources[l.assetId]
+                        : undefined) ??
+                      asset?.svg;
                   if (!asset || !raw) return null;
                   return (
                     <g
@@ -456,24 +454,6 @@ export function Canvas({
                           onPointerDown={(e) => start(e, l, "rotate")}
                           style={{ cursor: "crosshair" }}
                         />
-                        {[-1, 1].flatMap((x) =>
-                          [-1, 1].map((y) => (
-                            <rect
-                              key={`${x}${y}`}
-                              aria-label="изменить размер"
-                              x={x * (bw / 2 + 8) - 8}
-                              y={y * (bh / 2 + 8) - 8}
-                              width={16}
-                              height={16}
-                              rx={3}
-                              fill="white"
-                              stroke="#6b50c7"
-                              strokeWidth="2"
-                              onPointerDown={(e) => start(e, l, "scale")}
-                              style={{ cursor: "nwse-resize" }}
-                            />
-                          )),
-                        )}
                       </>
                     )}
                   </g>

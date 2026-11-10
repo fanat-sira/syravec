@@ -18,18 +18,27 @@ import (
 	"time"
 )
 
-type Asset struct {
-	ID           string    `json:"id"`
-	DisplayName  string    `json:"displayName"`
-	Variant      string    `json:"variant"`
-	Tags         []string  `json:"tags"`
+type AssetGeometry struct {
 	ViewBox      []float64 `json:"viewBox"`
 	AssetURL     string    `json:"assetUrl"`
-	Description  string    `json:"description"`
 	VisualBounds []float64 `json:"visualBounds,omitempty"`
 	Occupancy    []float64 `json:"occupancy,omitempty"`
 	VisualWeight float64   `json:"visualWeight,omitempty"`
 	Centroid     []float64 `json:"centroid,omitempty"`
+}
+type Asset struct {
+	Sets         map[string]AssetGeometry `json:"sets,omitempty"`
+	ID           string                   `json:"id"`
+	DisplayName  string                   `json:"displayName"`
+	Variant      string                   `json:"variant"`
+	Tags         []string                 `json:"tags"`
+	ViewBox      []float64                `json:"viewBox"`
+	AssetURL     string                   `json:"assetUrl"`
+	Description  string                   `json:"description"`
+	VisualBounds []float64                `json:"visualBounds,omitempty"`
+	Occupancy    []float64                `json:"occupancy,omitempty"`
+	VisualWeight float64                  `json:"visualWeight,omitempty"`
+	Centroid     []float64                `json:"centroid,omitempty"`
 }
 type Canvas struct {
 	Width  int    `json:"width"`
@@ -41,7 +50,6 @@ type Layer struct {
 	AssetID  string  `json:"assetId"`
 	X        float64 `json:"x"`
 	Y        float64 `json:"y"`
-	Scale    float64 `json:"scale"`
 	Rotation float64 `json:"rotation"`
 	Opacity  float64 `json:"opacity"`
 	Visible  bool    `json:"visible"`
@@ -49,37 +57,39 @@ type Layer struct {
 	Role     string  `json:"role,omitempty"`
 }
 type Scene struct {
-	Version      int     `json:"version"`
-	Canvas       Canvas  `json:"canvas"`
-	Palette      string  `json:"palette"`
-	BackgroundID string  `json:"backgroundId"`
-	Layers       []Layer `json:"layers"`
+	IllustrationSize string  `json:"illustrationSize"`
+	Version          int     `json:"version"`
+	Canvas           Canvas  `json:"canvas"`
+	Palette          string  `json:"palette"`
+	BackgroundID     string  `json:"backgroundId"`
+	Layers           []Layer `json:"layers"`
 }
 type CustomAssetDescriptor struct {
-	ID          string    `json:"id"`
-	DisplayName string    `json:"displayName"`
-	ViewBox     []float64 `json:"viewBox"`
+	IllustrationSize string    `json:"illustrationSize"`
+	ID               string    `json:"id"`
+	DisplayName      string    `json:"displayName"`
+	ViewBox          []float64 `json:"viewBox"`
 }
 type Request struct {
-	CustomAssets  []CustomAssetDescriptor `json:"customAssets,omitempty"`
-	Mode          string                  `json:"mode"`
-	Prompt        string                  `json:"prompt"`
-	AssetIDs      []string                `json:"assetIds"`
-	Palette       string                  `json:"palette"`
-	CanvasPreset  string                  `json:"canvasPreset"`
-	Seed          int                     `json:"seed"`
-	Planner       string                  `json:"planner"`
-	PaletteColors map[string]string       `json:"paletteColors,omitempty"`
+	IllustrationSize string                  `json:"illustrationSize"`
+	CustomAssets     []CustomAssetDescriptor `json:"customAssets,omitempty"`
+	Mode             string                  `json:"mode"`
+	Prompt           string                  `json:"prompt"`
+	AssetIDs         []string                `json:"assetIds"`
+	Palette          string                  `json:"palette"`
+	CanvasPreset     string                  `json:"canvasPreset"`
+	Seed             int                     `json:"seed"`
+	Planner          string                  `json:"planner"`
+	PaletteColors    map[string]string       `json:"paletteColors,omitempty"`
 }
 type Item struct {
-	AssetID      string   `json:"assetId"`
-	X            float64  `json:"preferredX"`
-	Y            float64  `json:"preferredY"`
-	RelativeSize float64  `json:"relativeSize"`
-	Rotation     float64  `json:"rotation"`
-	Role         string   `json:"role"`
-	Depth        int      `json:"depth"`
-	Opacity      *float64 `json:"opacity,omitempty"`
+	AssetID  string   `json:"assetId"`
+	X        float64  `json:"preferredX"`
+	Y        float64  `json:"preferredY"`
+	Rotation float64  `json:"rotation"`
+	Role     string   `json:"role"`
+	Depth    int      `json:"depth"`
+	Opacity  *float64 `json:"opacity,omitempty"`
 }
 type Plan struct {
 	Items   []Item `json:"items"`
@@ -117,6 +127,9 @@ func fail(w http.ResponseWriter, status int, code, message string) {
 	respond(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
 }
 func (s *Server) validate(r Request) error {
+	if r.IllustrationSize != "" && r.IllustrationSize != "large" && r.IllustrationSize != "small" {
+		return errors.New("неизвестный размер иллюстраций")
+	}
 	if r.Mode != "auto" && r.Mode != "concept" && r.Mode != "selection" {
 		return errors.New("неизвестный режим")
 	}
@@ -192,12 +205,12 @@ func (s *Server) validatePlan(p Plan, r Request) error {
 			return errors.New("неверная прозрачность")
 		}
 		found[i.AssetID]++
-		for _, v := range []float64{i.X, i.Y, i.RelativeSize, i.Rotation} {
+		for _, v := range []float64{i.X, i.Y, i.Rotation} {
 			if math.IsNaN(v) || math.IsInf(v, 0) {
 				return errors.New("неверные координаты")
 			}
 		}
-		if math.Abs(i.X) > 5 || math.Abs(i.Y) > 5 || i.RelativeSize <= 0 || i.RelativeSize > 12 || math.Abs(i.Rotation) > 3600 {
+		if math.Abs(i.X) > 5 || math.Abs(i.Y) > 5 || math.Abs(i.Rotation) > 3600 {
 			return errors.New("координаты вне допустимых границ")
 		}
 	}
@@ -273,99 +286,59 @@ func (s *Server) template(r Request) Plan {
 	focalAssigned := false
 	for i, id := range ids {
 		role := "support"
-		size := 1.05
-		if strings.HasSuffix(id, "-background") {
-			role = "decor"
-			size = 1.6
-		} else if !focalAssigned {
+		if !strings.HasSuffix(id, "-background") && !focalAssigned {
 			role = "focal"
-			size = 1.9
 			focalAssigned = true
 		}
-		if len(ids) > 5 {
-			size *= math.Sqrt(5 / float64(len(ids)))
+		if strings.HasSuffix(id, "-background") {
+			role = "decor"
 		}
-		p.Items = append(p.Items, Item{AssetID: id, X: points[i][0], Y: points[i][1], RelativeSize: size, Rotation: float64(positiveMod(i+r.Seed, 5)-2) * 5, Role: role, Depth: i})
+		p.Items = append(p.Items, Item{AssetID: id, X: points[i][0], Y: points[i][1], Rotation: float64(positiveMod(i+r.Seed, 5)-2) * 5, Role: role, Depth: i})
 	}
 
 	return p
 }
-func (s *Server) scene(p Plan, r Request) Scene {
-	c := Canvas{1000, 1000, r.CanvasPreset}
-	if c.Preset == "landscape" {
+func canvasFor(preset, illustrationSize string) Canvas {
+	c := Canvas{Width: 1000, Height: 1000, Preset: preset}
+	if preset == "landscape" {
 		c.Height = 633
 	}
-	if c.Preset == "portrait" {
+	if preset == "portrait" {
 		c.Width = 750
 	}
-	bg := "background-" + c.Preset + "-" + r.Palette
-	if c.Preset == "portrait" || r.Palette == "custom" {
-		bg = ""
+	if illustrationSize == "small" {
+		c.Width = (c.Width + 1) / 2
+		c.Height = (c.Height + 1) / 2
 	}
-	sc := Scene{1, c, r.Palette, bg, []Layer{}}
+	return c
+}
+func (s *Server) scene(p Plan, r Request) Scene {
+	illustrationSize := r.IllustrationSize
+	if illustrationSize == "" {
+		illustrationSize = "large"
+	}
+	c := canvasFor(r.CanvasPreset, illustrationSize)
+	backgroundPreset := r.CanvasPreset
+	if backgroundPreset == "portrait" {
+		backgroundPreset = "square"
+	}
+	palette := r.Palette
+	if palette == "custom" {
+		palette = "violet"
+	}
+	sc := Scene{Version: 2, IllustrationSize: illustrationSize, Canvas: c, Palette: r.Palette, BackgroundID: "background-" + backgroundPreset + "-" + palette, Layers: []Layer{}}
 	items := append([]Item(nil), p.Items...)
-	sort.SliceStable(items, func(i, j int) bool {
-		bi, bj := strings.HasSuffix(items[i].AssetID, "-background"), strings.HasSuffix(items[j].AssetID, "-background")
-		if bi != bj {
-			return bi
-		}
-		return items[i].Depth < items[j].Depth
-	})
-	hasFocal := false
-	largest := -1
-	largestSize := 0.0
+	sort.SliceStable(items, func(i, j int) bool { return items[i].Depth < items[j].Depth })
 	for i, item := range items {
-		if strings.HasSuffix(item.AssetID, "-background") {
-			items[i].Role = "decor"
-			continue
-		}
-		if item.Role == "focal" {
-			hasFocal = true
-		}
-		if !strings.HasSuffix(item.AssetID, "-background") && item.RelativeSize > largestSize {
-			largest = i
-			largestSize = item.RelativeSize
-		}
-	}
-	if !hasFocal && largest >= 0 {
-		items[largest].Role = "focal"
-	}
-	for i, item := range items {
-		var a Asset
-		for _, v := range s.assets {
-			if v.ID == item.AssetID {
-				a = v
-				break
-			}
-		}
-		vw, vh := a.ViewBox[2], a.ViewBox[3]
-		scale := math.Max(.2, math.Min(6, item.RelativeSize))
 		opacity := 1.0
-		if strings.HasSuffix(item.AssetID, "-background") {
-			opacity = .6
-		}
 		if item.Opacity != nil {
-			opacity = math.Max(.2, math.Min(1, *item.Opacity))
-			if !strings.HasSuffix(item.AssetID, "-background") {
-				opacity = math.Max(.65, opacity)
-			}
+			opacity = *item.Opacity
 		}
-		// rotated conservative bounds; reduce an oversized proposal, then keep it inside the frame
-		rad := item.Rotation * math.Pi / 180
-		k := .4 * float64(min(c.Width, c.Height)) / math.Max(vw, vh)
-		rw := (math.Abs(vw*math.Cos(rad)) + math.Abs(vh*math.Sin(rad))) * k
-		rh := (math.Abs(vw*math.Sin(rad)) + math.Abs(vh*math.Cos(rad))) * k
-		scale = math.Min(scale, math.Min(float64(c.Width)*.9/rw, float64(c.Height)*.9/rh))
-		mx, my := rw*scale/2/float64(c.Width), rh*scale/2/float64(c.Height)
-		x, y := math.Max(mx+.02, math.Min(1-mx-.02, item.X)), math.Max(my+.02, math.Min(1-my-.02, item.Y))
 		role := item.Role
 		if role == "" {
 			role = "support"
 		}
-		if role == "focal" && len(items) <= 5 {
-			scale = math.Max(scale, 1.45)
-		}
-		sc.Layers = append(sc.Layers, s.fit(Layer{ID: fmt.Sprintf("layer-%d-%d", r.Seed, i), AssetID: item.AssetID, X: x, Y: y, Scale: scale, Rotation: math.Mod(item.Rotation, 360), Opacity: opacity, Visible: true, Locked: false, Role: role}, c))
+		sc.Layers = append(sc.Layers, Layer{ID: fmt.Sprintf("layer-%d-%d", r.Seed, i), AssetID: item.AssetID, X: math.Max(-.2, math.Min(1.2, item.X)), Y: math.Max(-.2, math.Min(1.2, item.Y)), Rotation: math.Mod(item.Rotation, 360), Opacity: opacity, Visible: true, Locked: false, Role: role})
 	}
 	return sc
 }
@@ -384,6 +357,9 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 		if d.Decode(&extra) != io.EOF {
 			err = errors.New("лишние данные после json")
 		}
+	}
+	if input.IllustrationSize == "" {
+		input.IllustrationSize = "large"
 	}
 	composer := s
 	if err == nil {
@@ -487,9 +463,17 @@ func main() {
 		log.Fatal(err)
 	}
 	var c struct {
-		Assets []Asset `json:"assets"`
+		Version      int     `json:"version"`
+		ObjectFactor float64 `json:"objectFactor"`
+		Assets       []Asset `json:"assets"`
 	}
 	if err = json.Unmarshal(raw, &c); err != nil {
+		log.Fatal(err)
+	}
+	if c.Version != 2 || c.ObjectFactor != objectFactor {
+		log.Fatal("prepare both original SVG sets with scripts/prepare-assets.mjs before starting API")
+	}
+	if err = validateCatalog(c.Assets); err != nil {
 		log.Fatal(err)
 	}
 	s := &Server{assets: c.Assets, manifest: raw, key: os.Getenv("OPENROUTER_API_KEY"), model: env("AI_MODEL", "openai/gpt-6-luna"), url: strings.TrimRight(env("AI_BASE_URL", "https://openrouter.ai/api/v1"), "/"), format: env("AI_RESPONSE_FORMAT", "json_schema"), client: &http.Client{Timeout: 48 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}, slots: make(chan struct{}, 2)}
