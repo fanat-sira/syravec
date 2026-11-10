@@ -1,8 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,18 +11,24 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 )
 
 type Asset struct {
-	ID          string    `json:"id"`
-	DisplayName string    `json:"displayName"`
-	Variant     string    `json:"variant"`
-	Tags        []string  `json:"tags"`
-	ViewBox     []float64 `json:"viewBox"`
-	AssetURL    string    `json:"assetUrl"`
+	ID           string    `json:"id"`
+	DisplayName  string    `json:"displayName"`
+	Variant      string    `json:"variant"`
+	Tags         []string  `json:"tags"`
+	ViewBox      []float64 `json:"viewBox"`
+	AssetURL     string    `json:"assetUrl"`
+	Description  string    `json:"description"`
+	VisualBounds []float64 `json:"visualBounds,omitempty"`
+	Occupancy    []float64 `json:"occupancy,omitempty"`
+	VisualWeight float64   `json:"visualWeight,omitempty"`
+	Centroid     []float64 `json:"centroid,omitempty"`
 }
 type Canvas struct {
 	Width  int    `json:"width"`
@@ -39,6 +45,7 @@ type Layer struct {
 	Opacity  float64 `json:"opacity"`
 	Visible  bool    `json:"visible"`
 	Locked   bool    `json:"locked"`
+	Role     string  `json:"role,omitempty"`
 }
 type Scene struct {
 	Version      int     `json:"version"`
@@ -48,23 +55,29 @@ type Scene struct {
 	Layers       []Layer `json:"layers"`
 }
 type Request struct {
-	Mode         string   `json:"mode"`
-	Prompt       string   `json:"prompt"`
-	AssetIDs     []string `json:"assetIds"`
-	Palette      string   `json:"palette"`
-	CanvasPreset string   `json:"canvasPreset"`
-	Seed         int      `json:"seed"`
-	Planner      string   `json:"planner"`
+	Mode          string            `json:"mode"`
+	Prompt        string            `json:"prompt"`
+	AssetIDs      []string          `json:"assetIds"`
+	Palette       string            `json:"palette"`
+	CanvasPreset  string            `json:"canvasPreset"`
+	Seed          int               `json:"seed"`
+	Planner       string            `json:"planner"`
+	PaletteColors map[string]string `json:"paletteColors,omitempty"`
 }
 type Item struct {
-	AssetID      string  `json:"assetId"`
-	X            float64 `json:"preferredX"`
-	Y            float64 `json:"preferredY"`
-	RelativeSize float64 `json:"relativeSize"`
-	Rotation     float64 `json:"rotation"`
+	AssetID      string   `json:"assetId"`
+	X            float64  `json:"preferredX"`
+	Y            float64  `json:"preferredY"`
+	RelativeSize float64  `json:"relativeSize"`
+	Rotation     float64  `json:"rotation"`
+	Role         string   `json:"role"`
+	Depth        int      `json:"depth"`
+	Opacity      *float64 `json:"opacity,omitempty"`
 }
 type Plan struct {
-	Items []Item `json:"items"`
+	Items   []Item `json:"items"`
+	Concept string `json:"concept"`
+	Layout  string `json:"layout"`
 }
 type Server struct {
 	assets                  []Asset
@@ -107,11 +120,19 @@ func (s *Server) validate(r Request) error {
 	if r.CanvasPreset != "square" && r.CanvasPreset != "landscape" && r.CanvasPreset != "portrait" {
 		return errors.New("неизвестный формат")
 	}
-	if r.Planner != "llm" && r.Planner != "template" {
+	if r.Planner != "" && r.Planner != "llm" && r.Planner != "template" {
 		return errors.New("неизвестный способ сборки")
 	}
 	if len(r.AssetIDs) > 12 || r.Mode == "selection" && len(r.AssetIDs) == 0 {
 		return errors.New("выбери от 1 до 12 объектов")
+	}
+	for key, value := range r.PaletteColors {
+		if !strings.Contains(" strong medium light highlight pink soft ", " "+key+" ") || len(value) != 7 || value[0] != '#' {
+			return errors.New("неверный цвет палитры")
+		}
+		if _, err := hex.DecodeString(value[1:]); err != nil {
+			return errors.New("неверный цвет палитры")
+		}
 	}
 	seen := map[string]bool{}
 	for _, id := range r.AssetIDs {
@@ -146,8 +167,14 @@ func (s *Server) validatePlan(p Plan, r Request) error {
 		if r.Mode == "selection" && !required[i.AssetID] {
 			return errors.New("модель добавила лишний объект")
 		}
-		if found[i.AssetID] {
+		if found[i.AssetID] && r.Mode == "selection" {
 			return errors.New("модель повторила объект")
+		}
+		if i.Role != "" && i.Role != "focal" && i.Role != "support" && i.Role != "decor" {
+			return errors.New("неизвестная роль объекта")
+		}
+		if i.Opacity != nil && (math.IsNaN(*i.Opacity) || math.IsInf(*i.Opacity, 0) || *i.Opacity < 0 || *i.Opacity > 1) {
+			return errors.New("неверная прозрачность")
 		}
 		found[i.AssetID] = true
 		for _, v := range []float64{i.X, i.Y, i.RelativeSize, i.Rotation} {
@@ -155,8 +182,19 @@ func (s *Server) validatePlan(p Plan, r Request) error {
 				return errors.New("неверные координаты")
 			}
 		}
-		if i.X < 0 || i.X > 1 || i.Y < 0 || i.Y > 1 || i.RelativeSize <= 0 || i.RelativeSize > 3 || math.Abs(i.Rotation) > 180 {
+		if math.Abs(i.X) > 5 || math.Abs(i.Y) > 5 || i.RelativeSize <= 0 || i.RelativeSize > 12 || math.Abs(i.Rotation) > 3600 {
 			return errors.New("координаты вне допустимых границ")
+		}
+	}
+	if r.Mode == "concept" {
+		mainCount := 0
+		for _, item := range p.Items {
+			if !strings.HasSuffix(item.AssetID, "-background") {
+				mainCount++
+			}
+		}
+		if mainCount == 0 {
+			return errors.New("для идеи нужен хотя бы один главный объект")
 		}
 	}
 	if r.Mode == "selection" {
@@ -215,25 +253,26 @@ func (s *Server) template(r Request) Plan {
 			ids = []string{"book-main", "puzzle-main", "lamp-main"}
 		}
 	}
-	p := Plan{}
-	n := len(ids)
-	cols := n
-	if n > 3 {
-		cols = int(math.Ceil(math.Sqrt(float64(n))))
-	}
-	rows := int(math.Ceil(float64(n) / float64(cols)))
+	p := Plan{Concept: "шаблонная компоновка", Layout: []string{"diagonal", "cluster", "arc", "editorial"}[positiveMod(r.Seed, 4)]}
+	points := layoutPoints(r.CanvasPreset, len(ids), r.Seed)
+	focalAssigned := false
 	for i, id := range ids {
-		x, y := (float64(i%cols)+.5)/float64(cols), (float64(i/cols)+.5)/float64(rows)
-		size := 1.0
-		if n <= 3 {
-			y = .5 + float64(i%2)*.16 - .08
-			size = 1.25
-			if i == 0 {
-				size = 1.65
-			}
+		role := "support"
+		size := 1.05
+		if strings.HasSuffix(id, "-background") {
+			role = "decor"
+			size = 1.6
+		} else if !focalAssigned {
+			role = "focal"
+			size = 1.9
+			focalAssigned = true
 		}
-		p.Items = append(p.Items, Item{id, x, y, size, float64((i+r.Seed)%3-1) * 8})
+		if len(ids) > 5 {
+			size *= math.Sqrt(5 / float64(len(ids)))
+		}
+		p.Items = append(p.Items, Item{AssetID: id, X: points[i][0], Y: points[i][1], RelativeSize: size, Rotation: float64(positiveMod(i+r.Seed, 5)-2) * 5, Role: role, Depth: i})
 	}
+
 	return p
 }
 func (s *Server) scene(p Plan, r Request) Scene {
@@ -249,7 +288,34 @@ func (s *Server) scene(p Plan, r Request) Scene {
 		bg = ""
 	}
 	sc := Scene{1, c, r.Palette, bg, []Layer{}}
-	for i, item := range p.Items {
+	items := append([]Item(nil), p.Items...)
+	sort.SliceStable(items, func(i, j int) bool {
+		bi, bj := strings.HasSuffix(items[i].AssetID, "-background"), strings.HasSuffix(items[j].AssetID, "-background")
+		if bi != bj {
+			return bi
+		}
+		return items[i].Depth < items[j].Depth
+	})
+	hasFocal := false
+	largest := -1
+	largestSize := 0.0
+	for i, item := range items {
+		if strings.HasSuffix(item.AssetID, "-background") {
+			items[i].Role = "decor"
+			continue
+		}
+		if item.Role == "focal" {
+			hasFocal = true
+		}
+		if !strings.HasSuffix(item.AssetID, "-background") && item.RelativeSize > largestSize {
+			largest = i
+			largestSize = item.RelativeSize
+		}
+	}
+	if !hasFocal && largest >= 0 {
+		items[largest].Role = "focal"
+	}
+	for i, item := range items {
 		var a Asset
 		for _, v := range s.assets {
 			if v.ID == item.AssetID {
@@ -258,7 +324,17 @@ func (s *Server) scene(p Plan, r Request) Scene {
 			}
 		}
 		vw, vh := a.ViewBox[2], a.ViewBox[3]
-		scale := item.RelativeSize
+		scale := math.Max(.2, math.Min(6, item.RelativeSize))
+		opacity := 1.0
+		if strings.HasSuffix(item.AssetID, "-background") {
+			opacity = .6
+		}
+		if item.Opacity != nil {
+			opacity = math.Max(.2, math.Min(1, *item.Opacity))
+			if !strings.HasSuffix(item.AssetID, "-background") {
+				opacity = math.Max(.65, opacity)
+			}
+		}
 		// rotated conservative bounds; reduce an oversized proposal, then keep it inside the frame
 		rad := item.Rotation * math.Pi / 180
 		k := .4 * float64(min(c.Width, c.Height)) / math.Max(vw, vh)
@@ -267,57 +343,16 @@ func (s *Server) scene(p Plan, r Request) Scene {
 		scale = math.Min(scale, math.Min(float64(c.Width)*.9/rw, float64(c.Height)*.9/rh))
 		mx, my := rw*scale/2/float64(c.Width), rh*scale/2/float64(c.Height)
 		x, y := math.Max(mx+.02, math.Min(1-mx-.02, item.X)), math.Max(my+.02, math.Min(1-my-.02, item.Y))
-		sc.Layers = append(sc.Layers, Layer{fmt.Sprintf("layer-%d-%d", r.Seed, i), item.AssetID, x, y, scale, item.Rotation, 1, true, false})
+		role := item.Role
+		if role == "" {
+			role = "support"
+		}
+		if role == "focal" && len(items) <= 5 {
+			scale = math.Max(scale, 1.45)
+		}
+		sc.Layers = append(sc.Layers, s.fit(Layer{ID: fmt.Sprintf("layer-%d-%d", r.Seed, i), AssetID: item.AssetID, X: x, Y: y, Scale: scale, Rotation: math.Mod(item.Rotation, 360), Opacity: opacity, Visible: true, Locked: false, Role: role}, c))
 	}
 	return sc
-}
-func (s *Server) plan(ctx context.Context, r Request) (Plan, error) {
-	catalog, _ := json.Marshal(s.assets)
-	request, _ := json.Marshal(r)
-	system := `You arrange existing SVG illustrations. Never output SVG or invent assets. Return JSON only: {"items":[{"assetId":"book-main","preferredX":0.5,"preferredY":0.5,"relativeSize":1.5,"rotation":0}]}. Use 2-5 items for concept mode. In selection mode include exactly the requested assetIds once each. Positions are normalized centers 0..1, size 0.5..2, clockwise rotation -25..25. Arrange an editorial composition with focal hierarchy, balanced space, mild overlap only. Honor canvas aspect ratio. Russian or English prompt. Catalog: ` + string(catalog)
-	payload := map[string]any{"model": s.model, "messages": []map[string]string{{"role": "system", "content": system}, {"role": "user", "content": string(request)}}, "max_tokens": 2200}
-	if s.format == "json_schema" {
-		payload["response_format"] = map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "composition", "strict": true, "schema": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"items"}, "properties": map[string]any{"items": map[string]any{"type": "array", "minItems": 1, "maxItems": 12, "items": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"assetId", "preferredX", "preferredY", "relativeSize", "rotation"}, "properties": map[string]any{"assetId": map[string]string{"type": "string"}, "preferredX": map[string]string{"type": "number"}, "preferredY": map[string]string{"type": "number"}, "relativeSize": map[string]string{"type": "number"}, "rotation": map[string]string{"type": "number"}}}}}}}}
-	} else if s.format == "json_object" {
-		payload["response_format"] = map[string]string{"type": "json_object"}
-	}
-	b, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, "POST", s.url+"/chat/completions", bytes.NewReader(b))
-	if err != nil {
-		return Plan{}, err
-	}
-	req.Header.Set("Authorization", "Bearer "+s.key)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Title", "SyraVec")
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return Plan{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return Plan{}, fmt.Errorf("provider status %d", resp.StatusCode)
-	}
-	var data struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err = json.NewDecoder(io.LimitReader(resp.Body, 256<<10)).Decode(&data); err != nil || len(data.Choices) == 0 {
-		return Plan{}, errors.New("empty response")
-	}
-	var p Plan
-	d := json.NewDecoder(strings.NewReader(data.Choices[0].Message.Content))
-	d.DisallowUnknownFields()
-	if err = d.Decode(&p); err != nil {
-		return p, err
-	}
-	var extra any
-	if d.Decode(&extra) != io.EOF {
-		return p, errors.New("extra content")
-	}
-	return p, s.validatePlan(p, r)
 }
 func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
@@ -341,6 +376,13 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fail(w, 400, "invalid_request", "проверь запрос: "+err.Error())
 		return
+	}
+	if input.Planner == "" {
+		if s.key != "" {
+			input.Planner = "llm"
+		} else {
+			input.Planner = "template"
+		}
 	}
 	var p Plan
 	source := "fallback"
@@ -382,6 +424,8 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				fail(w, 504, "provider_timeout", "модель не ответила вовремя, композиция сохранена")
+			} else if upstream := (providerError{}); errors.As(err, &upstream) && upstream.status == 429 {
+				fail(w, 429, "rate_limited", "лимит провайдера исчерпан, попробуй позже")
 			} else {
 				log.Printf("planner failed: %T", err)
 				fail(w, 502, "provider_error", "не удалось получить корректную композицию, попробуй еще раз или выбери шаблон")
@@ -392,12 +436,12 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 	}
 	sc, layoutWarnings := s.refine(s.scene(p, input))
 	warnings = append(warnings, layoutWarnings...)
-	respond(w, 200, map[string]any{"scene": sc, "generation": map[string]any{"mode": input.Mode, "source": source, "warnings": warnings}})
+	respond(w, 200, map[string]any{"scene": sc, "generation": map[string]any{"mode": input.Mode, "source": source, "warnings": warnings, "concept": p.Concept, "layout": p.Layout}})
 }
 func (s *Server) routes() http.Handler {
 	m := http.NewServeMux()
 	m.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
-		respond(w, 200, map[string]any{"status": "ok", "aiConfigured": s.key != ""})
+		respond(w, 200, map[string]any{"status": "ok", "aiConfigured": s.key != "", "model": s.model})
 	})
 	m.HandleFunc("GET /api/v1/catalog", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, s.manifest) })
 	m.HandleFunc("POST /api/v1/compositions", s.compose)
@@ -407,6 +451,7 @@ func (s *Server) routes() http.Handler {
 	})
 }
 func main() {
+	loadEnvironment()
 	raw, err := os.ReadFile(env("CATALOG_PATH", "../web/public/assets/manifest.json"))
 	if err != nil {
 		log.Fatal(err)

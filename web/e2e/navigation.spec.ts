@@ -1,4 +1,9 @@
 import { test, expect } from "@playwright/test";
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/v1/health", (r) =>
+    r.fulfill({ json: { status: "ok", aiConfigured: false } }),
+  );
+});
 test("syravec, единый пазл в логотипе и favicon", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveTitle("syravec");

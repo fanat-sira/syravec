@@ -196,7 +196,11 @@ export function Inspector(p: Props) {
   } | null>(null);
   function dropLayer(e: React.DragEvent, id: string) {
     const from = e.dataTransfer.getData("application/x-syravec-layer");
-    if (!from || from === id || !p.scene.layers.some((l) => l.id === from))
+    if (
+      !from ||
+      from === id ||
+      !p.scene.layers.some((l) => l.id === from && !l.locked)
+    )
       return;
     e.preventDefault();
     e.stopPropagation();
@@ -253,6 +257,7 @@ export function Inspector(p: Props) {
     p.select(copy.id);
   };
   const remove = (l: Layer) => {
+    if (l.locked) return;
     p.change({
       ...p.scene,
       layers: p.scene.layers.filter((v) => v.id !== l.id),
@@ -260,6 +265,7 @@ export function Inspector(p: Props) {
     if (p.selected === l.id) p.select(null);
   };
   const reorder = (l: Layer, delta: number) => {
+    if (l.locked) return;
     const arr = [...p.scene.layers],
       i = arr.findIndex((v) => v.id === l.id),
       j = i + delta;
@@ -411,8 +417,12 @@ export function Inspector(p: Props) {
               return (
                 <div
                   className={`layer-row ${active ? "active" : ""} ${draggedLayer === l.id ? "dragging" : ""} ${dropTarget?.id === l.id ? "drop-" + dropTarget.edge : ""}`}
-                  draggable
+                  draggable={!l.locked}
                   onDragStart={(e) => {
+                    if (l.locked) {
+                      e.preventDefault();
+                      return;
+                    }
                     e.dataTransfer.setData("application/x-syravec-layer", l.id);
                     e.dataTransfer.effectAllowed = "move";
                     setDraggedLayer(l.id);
@@ -447,7 +457,7 @@ export function Inspector(p: Props) {
                   <div className="layer-main">
                     <button
                       className="layer-select"
-                      draggable
+                      draggable={!l.locked}
                       onKeyDown={(e) => {
                         if (
                           e.altKey &&
@@ -506,6 +516,7 @@ export function Inspector(p: Props) {
                     </button>
                     <button
                       className="icon-button layer-delete"
+                      disabled={l.locked}
                       aria-label={
                         active ? "удалить объект" : `удалить ${a?.displayName}`
                       }

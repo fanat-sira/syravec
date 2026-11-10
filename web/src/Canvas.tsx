@@ -364,7 +364,7 @@ export function Canvas({
                     />
                     <g
                       dangerouslySetInnerHTML={{
-                        __html: markup(raw, l.id, p, !asset.svg),
+                        __html: markup(raw, `object-${l.id}`, p, !asset.svg),
                       }}
                     />
                   </g>

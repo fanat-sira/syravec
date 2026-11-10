@@ -71,6 +71,13 @@ interface State {
   openProject: (id: string) => void;
   removeProject: (id: string) => void;
   setScene: (s: Scene, record?: boolean) => void;
+  importProject: (data: {
+    scene: Scene;
+    customAssets: Asset[];
+    title?: string;
+    messages?: Project["messages"];
+    generations?: Generation[];
+  }) => void;
   recordGeneration: (projectId: string, entry: Generation) => void;
   message: (role: "user" | "assistant", text: string) => void;
   undo: () => void;
@@ -141,6 +148,33 @@ export const useStore = create<State>()(
             revision: s.revision + 1,
           });
         }
+      },
+      importProject: (data) => {
+        const id = uid();
+        set((s) => ({
+          current: id,
+          selected: null,
+          past: [],
+          future: [],
+          revision: s.revision + 1,
+          customAssets: [
+            ...s.customAssets,
+            ...data.customAssets.filter(
+              (a) => !s.customAssets.some((v) => v.id === a.id),
+            ),
+          ],
+          projects: [
+            {
+              id,
+              title: data.title || "импортированная композиция",
+              scene: data.scene,
+              messages: data.messages ?? [],
+              generations: data.generations ?? [],
+              updatedAt: Date.now(),
+            },
+            ...s.projects,
+          ],
+        }));
       },
       recordGeneration: (projectId, entry) =>
         set((s) => ({

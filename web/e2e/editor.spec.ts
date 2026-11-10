@@ -1,4 +1,9 @@
 import { test, expect } from "@playwright/test";
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/v1/health", (r) =>
+    r.fulfill({ json: { status: "ok", aiConfigured: false } }),
+  );
+});
 test("старт, редактор, история, загрузки, векторный экспорт", async ({
   page,
 }) => {

@@ -98,11 +98,13 @@ export function markup(
   const doc = new DOMParser().parseFromString(raw, "image/svg+xml"),
     root = doc.documentElement;
   const ids = new Map<string, string>();
-  root.querySelectorAll("[id]").forEach((el) => {
-    const old = el.id;
-    ids.set(old, `${prefix}-${ids.size}`);
-    el.id = ids.get(old)!;
-  });
+  [root, ...root.querySelectorAll("[id]")]
+    .filter((el) => el.hasAttribute("id"))
+    .forEach((el) => {
+      const old = el.id;
+      ids.set(old, `${prefix}-${ids.size}`);
+      el.id = ids.get(old)!;
+    });
   const colors: Record<string, string> = {
     "#7864d7": p.strong,
     "#aa9bf0": p.medium,
@@ -125,9 +127,10 @@ export function markup(
         ["fill", "stroke", "stop-color", "color"].includes(at.localName)
       )
         v = colors[v.toLowerCase()] ?? v;
-      el.setAttribute(at.name, v);
+      at.value = v;
     }
   const g = doc.createElementNS(NS, "g");
+  if (root.id) g.setAttribute("id", root.id);
   // preserve root presentation attributes, including fill="none"
   for (const at of [...root.attributes])
     if (
@@ -147,15 +150,14 @@ export function exportSVG(
     p = paletteFor(scene);
   const background = backgroundMarkup(scene, sources);
   const body = scene.layers
-    .filter((l) => l.visible)
     .map((l) => {
       const a = assets.find((a) => a.id === l.assetId),
         raw = sources[l.assetId] ?? a?.svg;
       if (!a || !raw) throw Error("исходник объекта не загружен");
-      return `<g id="layer-${l.id}" opacity="${l.opacity}" transform="${transform(scene, l, a)}">${markup(raw, l.id, p, !a.svg)}</g>`;
+      return `<g id="layer-${l.id}" display="${l.visible ? "inline" : "none"}" opacity="${l.opacity}" transform="${transform(scene, l, a)}">${markup(raw, `object-${l.id}`, p, !a.svg)}</g>`;
     })
     .join("");
-  return `<svg xmlns="${NS}" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${background}${body}</svg>`;
+  return `<svg xmlns="${NS}" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" overflow="hidden">${background}${body}</svg>`;
 }
 export function download(text: string, name: string, type = "image/svg+xml") {
   const url = URL.createObjectURL(new Blob([text], { type }));

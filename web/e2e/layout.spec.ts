@@ -1,4 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/v1/health", (r) =>
+    r.fulfill({ json: { status: "ok", aiConfigured: false } }),
+  );
+});
 const sizes = [
   { width: 1440, height: 900 },
   { width: 1366, height: 768 },

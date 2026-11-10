@@ -49,6 +49,11 @@ export interface Asset {
   viewBox: number[];
   assetUrl: string;
   svg?: string;
+  description?: string;
+  visualBounds?: number[];
+  occupancy?: number[];
+  visualWeight?: number;
+  centroid?: number[];
 }
 export interface Layer {
   id: string;
@@ -60,6 +65,7 @@ export interface Layer {
   opacity: number;
   visible: boolean;
   locked: boolean;
+  role?: "focal" | "support" | "decor";
 }
 export interface Scene {
   version: 1;
@@ -124,7 +130,12 @@ export function size(s: Scene, l: Layer, a: Asset) {
     l.scale;
   return { w: a.viewBox[2] * k, h: a.viewBox[3] * k };
 }
-export function arrange(ids: string[], scene: Scene, seed = 0): Scene {
+export function arrange(
+  ids: string[],
+  scene: Scene,
+  seed = 0,
+  assets: Asset[] = [],
+): Scene {
   const n = ids.length,
     wide = scene.canvas.width > scene.canvas.height,
     cols = n <= 3 ? n : Math.ceil(Math.sqrt(n * (wide ? 1.6 : 1))),
@@ -165,5 +176,94 @@ export function arrange(ids: string[], scene: Scene, seed = 0): Scene {
       Number(b.assetId.endsWith("-background")) -
       Number(a.assetId.endsWith("-background")),
   );
+  return assets.length
+    ? fitScene({ ...scene, layers }, assets)
+    : { ...scene, layers };
+}
+
+export function rotatedSize(scene: Scene, l: Layer, a: Asset) {
+  const { w, h } = size(scene, l, a),
+    r = (l.rotation * Math.PI) / 180;
+  return {
+    w: Math.abs(w * Math.cos(r)) + Math.abs(h * Math.sin(r)),
+    h: Math.abs(w * Math.sin(r)) + Math.abs(h * Math.cos(r)),
+  };
+}
+export function fitScene(scene: Scene, assets: Asset[]): Scene {
+  const { width: w, height: h } = scene.canvas;
+  const layers = scene.layers.map((original) => {
+    const a = assets.find((a) => a.id === original.assetId);
+    if (!a) return original;
+    const l = { ...original },
+      bounds = rotatedSize(scene, l, a),
+      factor = Math.min(1, (w * 0.9) / bounds.w, (h * 0.9) / bounds.h);
+    l.scale = Math.max(0.1, l.scale * factor);
+    const b = rotatedSize(scene, l, a);
+    l.x = Math.max(b.w / 2 / w + 0.035, Math.min(1 - b.w / 2 / w - 0.035, l.x));
+    l.y = Math.max(b.h / 2 / h + 0.035, Math.min(1 - b.h / 2 / h - 0.035, l.y));
+    return l;
+  });
   return { ...scene, layers };
+}
+export function adaptFormat(
+  scene: Scene,
+  preset: Scene["canvas"]["preset"],
+  assets: Asset[],
+): Scene {
+  const canvas = {
+    width: preset === "portrait" ? 750 : 1000,
+    height: preset === "landscape" ? 633 : 1000,
+    preset,
+  };
+  const next = fitScene(
+    {
+      ...scene,
+      canvas,
+      backgroundId:
+        preset === "portrait" || scene.palette === "custom"
+          ? ""
+          : `background-${preset}-${scene.palette}`,
+    },
+    assets,
+  );
+  // Preserve object proportions, then gently separate critical overlaps in the new frame
+  const boxes = next.layers
+    .filter((l) => l.visible)
+    .map((l) => {
+      const a = assets.find((a) => a.id === l.assetId)!;
+      const b = rotatedSize(next, l, a);
+      return { l, w: b.w / canvas.width, h: b.h / canvas.height };
+    });
+  for (let pass = 0; pass < 6; pass++) {
+    let changed = false;
+    for (let i = 0; i < boxes.length; i++)
+      for (let j = 0; j < i; j++) {
+        const a = boxes[i],
+          b = boxes[j];
+        if (
+          a.l.assetId.endsWith("-background") ||
+          b.l.assetId.endsWith("-background")
+        )
+          continue;
+        const dx = a.l.x - b.l.x,
+          dy = a.l.y - b.l.y,
+          ix = (a.w + b.w) / 2 - Math.abs(dx),
+          iy = (a.h + b.h) / 2 - Math.abs(dy);
+        if (
+          ix <= 0 ||
+          iy <= 0 ||
+          ix * iy < Math.min(a.w * a.h, b.w * b.h) * 0.35
+        )
+          continue;
+        const move = next.layers.find((l) => l.id === a.l.id)!;
+        if (ix < iy) move.x += Math.sign(dx || 1) * Math.min(0.08, ix * 0.4);
+        else move.y += Math.sign(dy || 1) * Math.min(0.08, iy * 0.4);
+        changed = true;
+      }
+    if (!changed) break;
+    const fitted = fitScene(next, assets);
+    next.layers = fitted.layers;
+    for (const b of boxes) b.l = next.layers.find((l) => l.id === b.l.id)!;
+  }
+  return next;
 }

@@ -30,12 +30,13 @@ import {
   layer,
   uid,
   arrange,
+  adaptFormat,
   type Asset,
   type Scene,
 } from "./model";
 import { Canvas } from "./Canvas";
 import { Inspector } from "./Inspector";
-import { download, exportSVG, sanitize, parsePalette } from "./svg";
+import { download, exportSVG, sanitize, parsePalette, paletteFor } from "./svg";
 const examples = [
   {
     title: "знания открывают двери",
@@ -145,7 +146,7 @@ export default function App() {
     fileRef = useRef<HTMLInputElement>(null),
     paletteRef = useRef<HTMLInputElement>(null),
     projectRef = useRef<HTMLInputElement>(null),
-    seed = useRef(0);
+    seed = useRef(Math.floor(Math.random() * 1_000_000));
   const assets = useMemo(
     () => [...catalog, ...st.customAssets],
     [catalog, st.customAssets],
@@ -265,7 +266,7 @@ export default function App() {
     st.setScene(s);
   }
   function remove() {
-    if (!selected) return;
+    if (!selected || selected.locked) return;
     change({
       ...scene,
       layers: scene.layers.filter((l) => l.id !== selected.id),
@@ -301,16 +302,7 @@ export default function App() {
     );
   }
   function format(preset: Scene["canvas"]["preset"]) {
-    const width = preset === "portrait" ? 750 : 1000,
-      height = preset === "landscape" ? 633 : 1000;
-    change({
-      ...scene,
-      canvas: { width, height, preset },
-      backgroundId:
-        preset === "portrait" || scene.palette === "custom"
-          ? ""
-          : `background-${preset}-${scene.palette}`,
-    });
+    change(adaptFormat(scene, preset, assets));
   }
   async function generate(text = prompt, ids = picked) {
     if (busy || loading) return;
@@ -354,7 +346,11 @@ export default function App() {
         mode === "selection" &&
         ids.some((id) => st.customAssets.some((a) => a.id === id))
       ) {
-        result = arrange(ids, snapshot, seed.current++);
+        if (planner === "llm")
+          throw Error(
+            "для своих svg выбери шаблонную сборку, ai использует исходный каталог",
+          );
+        result = arrange(ids, snapshot, seed.current++, assets);
         generationSource = "fallback";
       } else {
         const r = await fetch("/api/v1/compositions", {
@@ -366,6 +362,16 @@ export default function App() {
             prompt: text,
             assetIds: mode === "selection" ? ids : [],
             palette: snapshot.palette,
+            paletteColors: Object.fromEntries(
+              ["strong", "medium", "light", "highlight", "pink", "soft"].map(
+                (key) => [
+                  key,
+                  paletteFor(snapshot)[
+                    key as keyof ReturnType<typeof paletteFor>
+                  ],
+                ],
+              ),
+            ),
             canvasPreset: snapshot.canvas.preset,
             seed: seed.current++,
             planner,
@@ -417,7 +423,7 @@ export default function App() {
   function example(i: number) {
     const e = examples[i];
     st.newProject();
-    st.setScene(arrange(e.ids, emptyScene(), i));
+    st.setScene(arrange(e.ids, emptyScene(), i, assets));
     st.message("user", e.title);
     st.select(null);
   }
@@ -470,32 +476,27 @@ export default function App() {
   async function importProject(f?: File) {
     if (!f) return;
     try {
-      if (f.size > 8e6) throw Error("проект слишком большой");
+      if (f.size > 32e6) throw Error("проект слишком большой");
       const raw = JSON.parse(await f.text());
       const { readProject } = await import("./validate");
       const imported = readProject(raw, assets);
-      imported.customAssets.forEach(st.addAsset);
-      st.newProject();
-      st.setScene(imported.scene);
+      st.importProject(imported);
     } catch (e) {
       setNotice((e as Error).message);
     }
   }
-  function saveProject() {
-    download(
-      JSON.stringify(
-        {
-          scene,
-          customAssets: st.customAssets.filter((a) =>
-            scene.layers.some((l) => l.assetId === a.id),
-          ),
-        },
-        null,
-        2,
-      ),
-      "syravec-project.json",
-      "application/json",
-    );
+  async function saveProject() {
+    if (!project) return;
+    try {
+      const { serializeProject } = await import("./validate");
+      download(
+        serializeProject(project, st.customAssets),
+        "syravec-project.json",
+        "application/json",
+      );
+    } catch (e) {
+      setNotice((e as Error).message);
+    }
   }
   function fitView() {
     setZoom(100);

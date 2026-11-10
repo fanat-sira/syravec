@@ -55,7 +55,7 @@ func TestBadRequests(t *testing.T) {
 func TestSelectionContract(t *testing.T) {
 	s := fixture()
 	r := req()
-	for _, p := range []Plan{{Items: []Item{{"book-main", .5, .5, 1, 0}}}, {Items: []Item{{"book-main", .5, .5, 1, 0}, {"fake", .5, .5, 1, 0}}}, {Items: []Item{{"book-main", -1, .5, 1, 0}, {"lamp-main", .5, .5, 1, 0}}}} {
+	for _, p := range []Plan{{Items: []Item{{AssetID: "book-main", X: .5, Y: .5, RelativeSize: 1, Rotation: 0}}}, {Items: []Item{{AssetID: "book-main", X: .5, Y: .5, RelativeSize: 1, Rotation: 0}, {AssetID: "fake", X: .5, Y: .5, RelativeSize: 1, Rotation: 0}}}, {Items: []Item{{AssetID: "book-main", X: -100, Y: .5, RelativeSize: 1, Rotation: 0}, {AssetID: "lamp-main", X: .5, Y: .5, RelativeSize: 1, Rotation: 0}}}} {
 		if s.validatePlan(p, r) == nil {
 			t.Fatal("accepted invalid plan")
 		}
@@ -128,7 +128,7 @@ func TestCanceledProvider(t *testing.T) {
 func TestRefineReducesPileAndPreservesSelection(t *testing.T) {
 	s := fixture()
 	r := req()
-	p := Plan{Items: []Item{{"book-main", .5, .5, 1.5, 0}, {"lamp-main", .5, .5, 1.5, 0}}}
+	p := Plan{Items: []Item{{AssetID: "book-main", X: .5, Y: .5, RelativeSize: 1.5, Rotation: 0}, {AssetID: "lamp-main", X: .5, Y: .5, RelativeSize: 1.5, Rotation: 0}}}
 	sc := s.scene(p, r)
 	before := overlap(s.bounds(sc.Layers[0], sc.Canvas), s.bounds(sc.Layers[1], sc.Canvas))
 	sc, _ = s.refine(sc)
