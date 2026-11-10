@@ -67,6 +67,8 @@ export default function App() {
     [loadError, setLoadError] = useState("");
   const [prompt, setPrompt] = useState(""),
     [busy, setBusy] = useState(false),
+    [recomposing, setRecomposing] = useState(false),
+    [aiConfigured, setAiConfigured] = useState<boolean | null>(null),
     [notice, setNotice] = useState(""),
     [composerError, setComposerError] = useState(""),
     [library, setLibrary] = useState(true),
@@ -211,6 +213,13 @@ export default function App() {
       }
     }
     void load();
+    fetch("/api/v1/health")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!cancelled && typeof data?.aiConfigured === "boolean")
+          setAiConfigured(data.aiConfigured);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
       controller.current?.abort();
@@ -303,13 +312,31 @@ export default function App() {
   function format(preset: Scene["canvas"]["preset"]) {
     change(adaptFormat(scene, preset, assets));
   }
-  async function generate(text = prompt) {
+  function recomposeUnavailable(s: Scene = scene) {
+    if (s.layers.length < 2) return "добавь хотя бы два объекта";
+    if (s.layers.length > 12) return "можно собрать от 2 до 12 объектов";
+    if (s.layers.some((l) => !catalog.some((a) => a.id === l.assetId)))
+      return "свои SVG можно компоновать вручную; здесь доступны объекты исходной библиотеки";
+    if (new Set(s.layers.map((l) => l.assetId)).size !== s.layers.length)
+      return "для этой сборки нужны разные объекты — копии одного SVG пока не поддерживаются";
+    if (s.layers.some((l) => l.locked))
+      return "разблокируй слои перед перекомпоновкой";
+    return "";
+  }
+  async function generate(text = prompt, fromLayers = false) {
     if (busy || loading) return;
-    if (!text.trim()) {
+    if (fromLayers) {
+      const reason = recomposeUnavailable();
+      if (reason) {
+        setComposerError(reason);
+        return;
+      }
+    }
+    if (!fromLayers && !text.trim()) {
       promptRef.current?.focus();
       return;
     }
-    st.message("user", text.trim());
+    if (!fromLayers) st.message("user", text.trim());
     const before = useStore.getState();
     const revision = before.revision,
       current = before.current,
@@ -318,6 +345,7 @@ export default function App() {
     setComposerError("");
     setNotice("");
     setBusy(true);
+    setRecomposing(fromLayers);
     const ac = new AbortController();
     controller.current = ac;
     try {
@@ -326,9 +354,9 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         signal: ac.signal,
         body: JSON.stringify({
-          mode: "auto",
-          prompt: text.trim(),
-          assetIds: [],
+          mode: fromLayers ? "selection" : "auto",
+          prompt: fromLayers ? "" : text.trim(),
+          assetIds: fromLayers ? snapshot.layers.map((l) => l.assetId) : [],
           palette: snapshot.palette,
           paletteColors: Object.fromEntries(
             ["strong", "medium", "light", "highlight", "pink", "soft"].map(
@@ -348,10 +376,33 @@ export default function App() {
       if (!r.ok)
         throw Error(data.error?.message || "не удалось собрать композицию");
       const { validateProject } = await import("./validate");
-      const result = validateProject(
+      let result = validateProject(
         { scene: { ...data.scene, customPalette: snapshot.customPalette } },
         assets,
       );
+      if (fromLayers) {
+        const original = new Map(snapshot.layers.map((l) => [l.assetId, l]));
+        const ids = result.layers.map((l) => l.assetId);
+        if (
+          ids.length !== snapshot.layers.length ||
+          new Set(ids).size !== ids.length ||
+          ids.some((id) => !original.has(id))
+        )
+          throw Error(
+            "модель изменила набор объектов; прежняя композиция сохранена",
+          );
+        result = {
+          ...snapshot,
+          layers: result.layers.map((l) => ({
+            ...original.get(l.assetId)!,
+            x: l.x,
+            y: l.y,
+            scale: l.scale,
+            rotation: l.rotation,
+            role: l.role,
+          })),
+        };
+      }
       const now = useStore.getState();
       if (now.revision !== revision || now.current !== current) {
         if (now.current === current)
@@ -361,12 +412,22 @@ export default function App() {
         return;
       }
       st.setScene(result);
-      st.select(null);
-      setPrompt((draft) => (draft.trim() === text.trim() ? "" : draft));
+      if (!fromLayers) {
+        st.select(null);
+        setPrompt((draft) => (draft.trim() === text.trim() ? "" : draft));
+      }
       const warnings = data.generation.warnings?.filter(
         (w: string) => w !== "шаблонная раскладка, без ai",
       );
-      if (warnings?.length) setNotice(warnings.join(" · "));
+      if (fromLayers) setAiConfigured(data.generation.source === "llm");
+      if (fromLayers && data.generation.source === "fallback")
+        setNotice(
+          [
+            "композиция собрана по шаблону — ai не подключен",
+            ...(warnings ?? []),
+          ].join(" · "),
+        );
+      else if (warnings?.length) setNotice(warnings.join(" · "));
     } catch (e) {
       if (!ac.signal.aborted && useStore.getState().current === current)
         setComposerError(
@@ -374,6 +435,7 @@ export default function App() {
         );
     } finally {
       setBusy(false);
+      setRecomposing(false);
       controller.current = null;
     }
   }
@@ -779,6 +841,12 @@ export default function App() {
               close={() => setInspectorOpen(false)}
               libraryExpanded={library}
               setLibraryExpanded={setLibrary}
+              recompose={() => void generate("", true)}
+              recomposeUnavailable={recomposeUnavailable()}
+              composing={busy}
+              recomposing={recomposing}
+              cancelRecompose={() => controller.current?.abort()}
+              aiConfigured={aiConfigured}
             />
           </div>
         )}

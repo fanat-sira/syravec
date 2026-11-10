@@ -1,106 +1,49 @@
-# устройство приложения
+# Architecture
 
-`scene` хранит параметры холста, палитру и упорядоченные слои, координаты слоя нормализованы относительно холста, масштаб равномерный относительно исходного viewbox
+SyraVec uses a React/TypeScript editor, a Go HTTP API, and native SVG rendering. There is no server database, account system, or message queue.
 
-`web/src/model.ts` содержит типы и общую формулу преобразования, `web/src/Canvas.tsx` отвечает за указатель и ручные преобразования, `web/src/svg.ts` собирает одни и те же исходные векторы для холста и автономного экспорта, определения внутри каждого объекта получают отдельное пространство идентификаторов
+## Scene model
 
-`web/src/store.ts` сохраняет проекты и загруженные svg в indexeddb через zustand, временное перетаскивание не пишет историю на каждом кадре, при завершении жеста фиксируется одна операция, изменения сцены увеличивают ревизию и защищают от запоздавших ответов модели
+A scene contains its canvas format, palette, background, and ordered layers. Layer positions are normalized to the canvas; scale is uniform relative to the original SVG viewBox. Each layer keeps its own ID, asset ID, transform, opacity, visibility, and lock state.
 
-`api/main.go` обслуживает health, каталог и сборку, `api/provider.go` отправляет модели смысловые описания, пропорции, центры визуального веса, формат и цвета, получает только структурированный json-план с замыслом, ролями и порядком объектов, модель не получает исходники svg
+[`model.ts`](../web/src/model.ts) defines the model and transforms. [`Canvas.tsx`](../web/src/Canvas.tsx) handles pointer gestures, while [`svg.ts`](../web/src/svg.ts) renders the same geometry for preview and standalone export. Internal SVG IDs and references are namespaced per instance. Hidden layers are exported with `display="none"`; editor controls are excluded.
 
-проверяются идентификаторы, точный состав выбранного набора, конечность и диапазоны чисел, для неверного ответа допускается одна попытка исправления в рамках общего таймаута 45 секунд, сбои провайдера не повторяются автоматически
+[`store.ts`](../web/src/store.ts) persists projects and uploaded SVGs in IndexedDB. Pointer gestures keep transient drafts and record one completed action in Undo. A scene revision prevents late model responses from replacing subsequent manual changes.
 
-`api/layout.go` сохраняет исходное направление компоновки, ограничивает повернутые объекты холстом, оценивает пересечения по сетке силуэта 8×8 и баланс по визуальному весу, разрешает небольшие перекрытия, фоновые варианты располагает позади основных объектов
+## Composition requests
 
-`scripts/prepare-assets.mjs` и `api/cmd/asset-audit` измеряют границы, силуэт, контрастный вес и центр каждого объекта через librsvg при подготовке библиотеки, измерения хранятся в manifest, исходная геометрия не изменяется
+`POST /api/v1/compositions` accepts:
 
-без ключа доступен честно обозначенный шаблонный режим, сбои модели не подменяются незаметным успехом, ai не создает геометрию и не меняет пути исходников
+- `auto`: exact catalog-name lists use the local layout; other text becomes a concept request.
+- `concept`: the model chooses suitable catalog objects and their arrangement.
+- `selection`: the model arranges exactly the supplied unique `assetIds`.
 
-## свободный запрос и маршрутизация
+Requests include the current palette, custom color roles, canvas preset, and a variation seed. `planner: template` requests the local layout explicitly. Without a configured key, the default planner is the local template.
 
-Composer отправляет `mode: auto`, текст и пустой `assetIds`; способ сборки выбирает сервер, настроек внутри Composer нет. `templateRoute` распознаёт только точные списки названий каталога и оставляет весь остальной текст в concept. concept напрямую вызывает основную модель, без предварительного Decisions/Guard и без семантического отказа. старые явные API-режимы сохранены для совместимости.
+[`provider.go`](../api/provider.go) sends descriptions, aspect ratios, visual weights, and centers to the model. It accepts only a JSON plan with known IDs and valid scene parameters. Output is bounded to 1–12 items and 5000 tokens. An invalid plan allows one repair attempt within the same 45-second generation deadline; provider failures are not retried automatically. There is no preliminary classifier or semantic input rejection.
 
-ограничения относятся к результату: известные ID, JSON-схема, 1–12 объектов, допустимые числа и параметры, без произвольной геометрии/растра. concept допускает несколько экземпляров одного SVG. промпт модели явно объясняет визуальную интерпретацию любого текста и сопоставление «монета — циферблат, ручки — стрелки». лимит ответа 5000 токенов, Go-валидация и одна попытка исправления сохраняются.
+[`layout.go`](../api/layout.go) constrains rotated objects to the canvas, estimates overlap using an 8×8 occupancy grid, and balances visual weight. Original SVG paths are never redrawn.
 
-`guard.go` и прежний разбор Decisions удалены вместе с неиспользуемыми полями сервера; проверки заменены контрактом прямого вызова модели и локальной раскладки. переменные `AI_GUARD_*` удалены из Compose и `.env.example`, health сообщает `guardEnabled: false`.
+## Rearranging canvas objects
 
-## уточнения к исходному пакету документации
+The Layers action accepts 2–12 distinct built-in assets. Custom SVGs, repeated copies, and locked layers disable it rather than silently discarding objects.
 
-- файлы `group 2136136332`, `group 2136136333`, `group 2136136334` являются таблицами палитр, а не альбомными фонами, ранее описание в `syravec-development-docs` ошибочно называло их фонами
-- настоящие фоны взяты из файлов `фон`, для альбомного и портретного холста используется вписывание с обрезкой по `preserveAspectRatio`, без растяжения векторных объектов
-- палитры сопоставлены по шести цветным ячейкам исходных таблиц, черный и белый сохраняются
-- в оригинальном задании своя загрузка svg необязательна, она добавлена по пожеланию пользователя как отдельная локальная функция
-- собственная палитра содержит `strong`, `medium`, `light`, `highlight`, `pink`, `soft`, каждый цвет в формате `#rrggbb`
-- вместо react moveable выбран native pointer events, трансформации считаются в координатах svg через обратную матрицу экрана, это уменьшает зависимости и сохраняет одинаковую геометрию просмотра и экспорта
-- проекты сохраняются в браузере; загрузка svg и палитры расширяет первоначальный минимальный план, база данных на сервере не требуется
+The client validates the returned set again, then applies positions, scales, rotations, roles, and order to the existing layers. IDs, visibility, opacity, background, palette, and canvas format remain intact. One scene update records one Undo action. Errors, cancellation, and stale responses leave the scene unchanged.
 
-## источники
+The action identifies AI versus template output. Cancellation is available in both the inspector and Composer. Its footer stays outside the independently scrolling layer list.
 
-оригинальное задание прочитано из локального `testovoe.svg`, геометрия взята из второго архива в `originals`, ai-клиент следует официальному контракту [chat completions openrouter](https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request), интерфейс и реализация созданы с помощью codex, утверждений об использовании иных ai-инструментов нет
+## Asset preparation
 
-## инспектор и генерации
+The one-shot `assets` service reads the private source ZIP from `originals/assets.zip`. [`prepare-assets.mjs`](../scripts/prepare-assets.mjs) normalizes the library, and [`asset-audit`](../api/cmd/asset-audit/main.go) measures bounds, occupancy, visual weight, and centroid with librsvg. Source geometry is preserved.
 
-`web/src/Inspector.tsx` содержит библиотеку с объединенными вариантами, список слоев и свойства, выделение общее с холстом; маршрут по тексту определяется на сервере
+The prepared library contains 20 objects, including main/background pairs, plus format-specific backgrounds. Three source palette references provide six color roles; black and white remain unchanged. Custom SVG uploads are sanitized static vectors and are excluded from AI selection.
 
-секционные заголовки остаются на экране, содержимое прокручивается внутри секции, на узких экранах инспектор открывается поверх рабочей области
+Docker publishes prepared assets only after successful preparation. API and web containers mount them read-only. Vite output lives under `/static/`, separate from the `/assets/` volume, so the library mount cannot hide application JS/CSS.
 
-история сообщений и результатов удалена из интерфейса. старые поля сообщений и генераций в IndexedDB сохранены для совместимости без удаления пользовательских проектов. новый результат заменяет сцену одним действием undo; запоздавший ответ не заменяет ручные правки.
+## Quotas and persistence
 
-## геометрия панелей и вид холста
+[`limits.go`](../api/limits.go) uses sliding timestamp windows: 5 main-model calls per IP per hour, 20 per IP per 24 hours, and 150 globally per 24 hours by default. All three checks and counter updates share one mutex. A model dispatch, including a repair, reserves quota immediately before the outbound POST; failed dispatched calls remain counted.
 
-`web/src/panelLayout.ts` рассчитывает явные высоты секций вместо пропорционального flex-grow, перетаскивание разделителя меняет только соседние открытые секции, высоты сохраняются при сворачивании и восстанавливаются при раскрытии
+Counters use hashed normalized IPs and an atomic file replacement in the `api-data` Docker volume. Storage errors block model dispatch. HTTP 429 includes `Retry-After` and the wait until all exceeded windows permit another call. The implementation coordinates one API process; independent replicas would need shared coordination.
 
-на очень низких экранах дополнительные секции автоматически сворачиваются, чтобы сохранить доступ к заголовкам и жесткий минимум открытых секций
-
-панорамирование хранится только в локальном состоянии canvas и применяется к внешней обертке svg, в scene оно не записывается и в экспорт не попадает, клавиша пробела в текстовых полях сохраняет обычное поведение
-
-## рабочая поверхность без шапки
-
-canvas занимает весь main-shell, инспектор и нижняя панель накладываются поверх него, для первоначального вписывания композиции используются доступная ширина с учетом инспектора и запас снизу под инструменты, доступная высота измеряется при изменении размера Composer
-
-перенос библиотеки передает только проверяемый идентификатор asset через внутренний mime-тип, координаты отпускания переводятся в систему svg через обратную экранную матрицу, учитываются перемещение и масштаб вида
-
-ctrl+wheel обрабатывается непассивным слушателем только внутри области холста, масштаб ограничен диапазоном 25–400%, точка под курсором сохраняется за счет компенсации смещения вида
-
-Composer содержит ввод и отправку. во время запроса textarea readOnly, текст визуально повторён в aria-hidden слое с анимированным CSS-градиентом; прокрутка синхронизирована с textarea. квадрат остановки разблокирует ввод после отмены. ошибка — абсолютный элемент над Composer, не участвующий в измерении dock и не сдвигающий кнопки. при reduced motion градиент не анимируется.
-
-## итоговое расположение управления
-
-экспорт svg является отдельным текстовым действием сверху перед инспектором, снизу слева расположена самостоятельная группа отмены, снизу справа находятся уменьшение, пресеты масштаба, увеличение и вписывание
-
-в Composer нет кнопки загрузки и настроек AI. загрузка SVG остаётся в библиотеке, пример JSON палитры — в свойствах; размер отправки/стопа одинаковый, 36px.
-
-истории чата, её раскрытия и связанных областей перехвата указателя больше нет.
-
-прокручиваемые области резервируют ширину скроллбара через scrollbar-gutter, строки слоев имеют фиксированную высоту и постоянные действия, перестановка работает через отдельный mime-тип слоя и преобразование экранного порядка обратно в painter order, одна перестановка соответствует одной операции отмены
-
-## сохранение и экспорт
-
-импорт/экспорт проекта JSON удалён из интерфейса; сериализаторы старого формата сохранены для совместимости и валидации данных. проекты и собственные SVG автоматически сохраняются в IndexedDB, выбранный проект восстанавливается после перезагрузки. SVG экспортируется отдельно с именем композиции.
-
-смена формата равномерно масштабирует каждый объект при необходимости и исправляет критические перекрытия без изменения путей. alt + перетаскивание создаёт новый ID и временный визуальный экземпляр, при завершении добавляет копию одним действием undo. клик без движения, pointercancel и заблокированные объекты не создают копию; ограничение 40 слоёв сохраняется.
-
-экспорт включает скрытые слои с `display=none`, определения каждого экземпляра и все внутренние ссылки получают уникальные идентификаторы, xlink-ссылки сохраняют пространство имен
-
-## Docker и финальные взаимодействия
-
-`compose.yaml` запускает одноразовый контейнер `assets` перед API и nginx. он читает приватный ZIP из `./originals`, готовит и измеряет SVG во временном каталоге и только после успешной проверки публикует библиотеку в общий volume. API и nginx подключают volume только для чтения. сборочные образы не содержат оригиналов и `.env`. `compose.release.yaml` переключает сервисы на образы GHCR с тегом коммита; `scripts/deploy.sh` проверяет предпосылки, ждёт healthcheck и при неудаче возвращает предыдущий тег. workflow деплоя выполняется на self-hosted Linux x64 раннере в `/opt/syravec`, использует `GITHUB_TOKEN` для чтения GHCR и не требует SSH. `.env`, оригиналы и файл предыдущего тега находятся вне рабочего checkout раннера; Compose-проект имеет явное имя `syravec`.
-
-`Canvas` принимает события на всей рабочей поверхности; отдельная `.stage-fit-area` задаёт прямоугольник вписывания с учётом инспектора, верхних действий и измеренной высоты нижних инструментов.
-
-название проекта можно изменить независимо от сообщений. `titleEdited` защищает ручное название от автоматической замены первым запросом. импортированное название также сохраняется. удаление проекта подтверждается отдельно; удаление последнего слоя сохраняет проект. переключение существующих проектов сбрасывает временное состояние Composer, создание первой сцены вручную сохраняет черновик ввода.
-
-
-## пути frontend и библиотеки в контейнере
-
-Vite пишет JS/CSS и динамические chunks в `/static/`, а runtime-библиотека SVG подключается volume в `/assets/`. эти каталоги не пересекаются: mount библиотеки не должен скрывать исполняемые файлы интерфейса. nginx возвращает 404 для отсутствующих файлов обоих каталогов, HTML перечитывается с `Cache-Control: no-cache`. контейнерный smoke-тест через `scripts/check-web-assets.py` читает фактически отдаваемый index и проверяет HTTP-статус, MIME type и содержимое ссылок JS/CSS при подключённой библиотеке, в дополнение к проверке API и SVG.
-
-## квоты основной генерации
-
-`api/limits.go` проверяет 5 обращений на IP за скользящий час, 20 на IP за сутки и 150 на сервис за сутки. настройки `AI_IP_HOURLY_LIMIT`, `AI_IP_DAILY_LIMIT`, `AI_SERVICE_DAILY_LIMIT` читаются при запуске, принимают положительные целые числа и передаются через Compose. старые записи сохраняются при снижении лимитов.
-
-`compose` добавляет IP в context только основной ветки. `planAttempt` резервирует квоту непосредственно перед `client.Do`; повторный запрос для исправления плана тоже учитывается. ошибка квоты/записи прекращает попытки исправления. одна блокировка mutex защищает очистку окон, проверку всех трёх квот, сохранение и обновление обоих счётчиков. отказ не добавляет запись. selection не занимает квоты и два слота основной генерации; скрытого модельного вызова больше нет. отмена/ошибка после отправки не возвращает квоту; context основной генерации ограничен 45 секундами.
-
-при превышении рассчитывается срок освобождения достаточного числа записей в каждом окне; в ответ берётся максимальный срок. HTTP 429 содержит округлённый вверх `Retry-After` и `error.retryAfterSeconds`, сообщение показывает ожидание в минутах. Composer отображает его как постоянную ошибку рядом с вводом. новые обращения могут отложить восстановление глобальной квоты. занятые два слота дают отдельный 429 с `Retry-After: 1` как интервалом повторной попытки, без расхода квоты.
-
-`AI_USAGE_PATH=/app/data/ai-usage.json` хранится в volume `api-data`, запись через временный файл, fsync и rename предшествует вызову провайдера. ошибка записи запрещает вызов. IP нормализуются и хешируются. внешний nginx дописывает реальный адрес в XFF; внутренний nginx доверяет только bridge/loopback, берёт последний адрес и перезаписывает X-Real-IP. API использует его только с явно включённым `AI_TRUST_PROXY`; прямой запуск использует RemoteAddr.
+The container nginx resolves client addresses only through the configured trusted proxy network and overwrites `X-Real-IP`. The API uses that header only with `AI_TRUST_PROXY=true`; otherwise it uses `RemoteAddr`. The API port is not published by Compose.

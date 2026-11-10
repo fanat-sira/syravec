@@ -396,11 +396,15 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 	// including figurative uses of catalog objects, goes straight to the planner.
 	if input.Mode == "auto" {
 		input = s.templateRoute(input)
+		// Text-only literal lists keep the free local path; explicit selection is AI-capable.
+		if input.Mode == "selection" {
+			input.Planner = "template"
+		}
 	}
 	var p Plan
 	source := "fallback"
 	warnings := []string{}
-	if input.Planner == "template" || input.Mode == "selection" {
+	if input.Planner == "template" {
 		p = s.template(input)
 		warnings = append(warnings, "шаблонная раскладка, без ai")
 	} else {

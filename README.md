@@ -1,227 +1,112 @@
-# syravec
+# SyraVec
 
-студия векторных композиций: ручной редактор, шаблонная сборка и ai через openrouter. react + typescript, go API. ai выбирает готовые SVG и размещает их; исходная геометрия остаётся векторной.
+An SVG composition editor with AI-assisted layouts. Built with React, TypeScript, Go, and Docker Compose.
 
-## библиотека и рамки тестового
+Describe a visual idea or arrange objects from the supplied illustration library. The model plans a composition; the editor keeps the original SVG geometry and exports editable vectors.
 
-по уточнённой пользователем формулировке оригинального тз допустимо «загружать или использовать заранее подготовленную библиотеку из SVG-иллюстраций». для SyraVec выбран второй вариант: при открытии сервиса посетителю сразу доступна библиотека исходных 20 SVG-элементов. оба сценария автоматизации используют исходный каталог, без генерации новых объектов и изменения оригинальной геометрии.
+[Open SyraVec](https://syravec.fanat-sira.art/)
 
-архив — материал для однократной подготовки библиотеки разработчиком или администратором. посетитель сайта не загружает ZIP и не настраивает окружение. при текущей поставке оригиналы размещаются отдельно на сервере, подготовленная библиотека хранится в Docker volume. требование ZIP по указанному ниже пути относится к нашей реализации поставки, а не к тз работодателя.
+![SyraVec editor with the original SVG library](docs/images/editor.png)
 
-загрузка собственных SVG сохранена как дополнительная функция ручного редактора и шаблонной сборки. поддержка произвольных пользовательских SVG в ai в текущий объём не входит. загрузка палитры, автоматическая перекраска и редактируемый векторный экспорт остаются частью основного сценария.
+*Canvas, object library, layers, and composition properties. The included examples can be explored without an API key.*
 
-## запуск одной командой
+## Features
 
-нужны **Docker Engine и Docker Compose v2**. Go, Node.js, unzip и librsvg на компьютере устанавливать не нужно — сборка, подготовка и проверка SVG выполняются внутри Docker.
+- **Compose from an idea:** describe a metaphor, headline, or scene; AI selects and arranges library objects.
+- **Compose from objects:** add objects to the canvas and use **«перекомпоновать объекты»** in Layers. AI rearranges exactly that set.
+- **Edit vectors:** move, scale, rotate, duplicate with Alt-drag, reorder, hide, and lock layers; undo or redo completed actions.
+- **Adjust the composition:** square, landscape, and portrait formats; three palettes and custom palette upload.
+- **Keep projects:** browser autosave, project names, and restoration after reload.
+- **Export SVG:** standalone, editable vectors with separate object groups and unique internal IDs.
 
-1. клонируй репозиторий и перейди в его корень:
+<p>
+  <img src="docs/images/mobile.png" alt="SyraVec canvas and Composer on mobile" width="250" />
+  <img src="docs/images/mobile-inspector.png" alt="Object layers and properties on mobile" width="250" />
+</p>
 
-   ```bash
-   git clone git@github.com:fanat-sira/syravec.git
-   cd syravec
-   ```
+## Quick start
 
-2. как разработчик или администратор, получи исходные иллюстрации отдельно и положи архив **без распаковки** сюда:
-
-   ```text
-   syravec/
-     compose.yaml
-     originals/
-       assets.zip
-   ```
-
-   оригиналы и подготовленные SVG не публикуются в Git. имя файла для запуска — `assets.zip`; имена SVG внутри архива сохраняются исходными. архив содержит исходные SVG: Книга, Книга-1, Пазлы, Пазлы-1 и остальные объекты, фоны и варианты из выданного набора. без архива контейнер `assets` завершится с понятной инструкцией, а API и интерфейс не запустятся.
-
-3. для ai скопируй `.env.example` в `.env` и укажи `OPENROUTER_API_KEY`. **без `.env` приложение тоже запускается**: доступны ручное редактирование и явно обозначенная шаблонная сборка.
-
-   ```dotenv
-   OPENROUTER_API_KEY=твой_ключ
-   AI_MODEL=openai/gpt-6-luna
-   AI_RESPONSE_FORMAT=json_schema
-   AI_GUARD_MODEL=openai/gpt-6-luna-decisions
-   AI_GUARD_ENABLED=true
-   WEB_PORT=3000
-   ```
-
-   ключ читает только API; в браузер и Docker-образы он не попадает. `json_schema` требует совместимой модели; при необходимости выбери `json_object` или `text`. `.env` исключён из Git и контекста сборки.
-
-4. запусти из корня:
-
-   ```bash
-   sudo docker compose up --build -d
-   ```
-
-открой **http://127.0.0.1:3000**. на первом запуске Docker скачивает образы и зависимости. контейнер `assets` со статусом `Exited (0)` — норма: библиотека подготовлена в общем volume, API и nginx читают её без записи. повторный запуск той же команды обновляет приложение и библиотеку.
+Requires Docker Engine with the Compose plugin. Go, Node.js, and SVG preparation tools run inside Docker.
 
 ```bash
-sudo docker compose ps -a
-sudo docker compose logs assets   # инструкция при отсутствии или ошибке архива
-sudo docker compose logs api web # диагностика приложения
-sudo docker compose down          # остановка
+git clone https://github.com/fanat-sira/syravec.git
+cd syravec
+mkdir -p originals
+cp .env.example .env
 ```
 
-порт по умолчанию доступен только локально. `WEB_BIND` и `WEB_PORT` настраиваются в `.env`. для внешнего доступа используй reverse proxy с HTTPS и авторизацией, особенно если подключён платный ai. до запуска CI следует предоставить приватный архив на сервере отдельно.
+Place the supplied source archive at **`originals/assets.zip`**, without extracting it. The original illustrations are distributed separately and are not included in this repository. Docker prepares the library automatically; a missing or invalid archive stops startup with instructions.
 
-## работа в редакторе
-
-- слева проекты: новая композиция, переименование карандашом (или двойным кликом по названию), удаление с подтверждением. полное название доступно при наведении. выбранный проект восстанавливается после перезагрузки.
-- справа **библиотека → слои → свойства**. секции сворачиваются, изменяют высоту разделителями, прокручиваются независимо. в свойствах можно перейти от выделенного объекта к композиции без снятия выделения.
-- `+` в библиотеке или перенос миниатюры добавляет SVG на холст. основной/фоновый вариант обозначен на карточке.
-- Composer снизу по центру принимает **идею иллюстрации или названия объектов**. переключателей сценариев нет: точный список названий каталога собирается сервером, любой другой текст интерпретирует основная модель.
-- Composer содержит только текст и отправку/стоп. во время запроса текст доступен только для чтения: тёмно-серые буквы с движущимся светлым градиентом. после остановки или завершения ввод разблокируется; ошибка и отмена сохраняют запрос. ошибки появляются над вводом, вне потока, без смещения Composer и нижних кнопок.
-- новый запрос заменяет сцену одним действием undo. сообщений и истории генераций в интерфейсе нет. диалоговое редактирование не предусмотрено.
-- **экспорт SVG** сверху справа от холста; имя файла берётся из названия композиции. SVG сохраняет векторные объекты и их геометрию, без рамок выделения, сетки и интерфейса. импорта/экспорта проекта JSON в интерфейсе нет.
-
-## свободный запрос и ограничения результата
-
-Guard и предварительная классификация больше не вызываются. нет отказов `prompt_rejected` / `prompt_uncertain` по смыслу пользовательского текста. сохраняются технические ограничения: непустой текст до 2000 символов, квоты и таймаут основной модели.
-
-точный список названий библиотеки через запятую, точку с запятой или перенос строки использует серверную раскладку без модели. все остальные формулировки направляются в `AI_MODEL`, включая метафоры с буквальным сопоставлением объектов: «циферблат это монета а стрелки это ручки». модель интерпретирует текст в рамках иллюстрации; повторное использование объекта допускается. без настроенного ключа остаётся локальный шаблонный подбор.
-
-ограничен результат: только JSON-план из 1–12 экземпляров существующих SVG, допустимые параметры сцены, без нового SVG, текста или растра. схема ответа, лимит 5000 выходных токенов и Go-валидатор сохраняются; невалидный план допускает одну попытку исправления. пользовательский текст не может изменить этот контракт.
-
-`AI_GUARD_ENABLED`, `AI_GUARD_MODEL`, `AI_GUARD_URL` больше не используются приложением. старые строки в серверном `.env` можно удалить; обязательных новых переменных нет.
-
-## лимиты основной AI-генерации
-
-| параметр | лимит |
-| --- | --- |
-| один IP за скользящие 60 минут | 5 обращений |
-| один IP за скользящие 24 часа | 20 обращений |
-| весь сервис за скользящие 24 часа | 150 обращений |
-| одновременно | 2 генерации |
-| длительность основной генерации | 45 секунд |
-
-эти квоты и слоты используются только при переходе к основной LLM. серверная раскладка названных объектов не занимает их. предварительного модельного вызова нет. старого лимита 10 запросов в минуту нет. учитывается каждое обращение непосредственно перед отправкой HTTP-запроса основной модели, включая последующую ошибку/отмену: провайдер мог уже потратить токены. если требуется дополнительное обращение для исправления невалидного плана, оно тоже расходует квоту; общий таймаут генерации остаётся 45 секунд.
-
-значения задаются в `.env` и передаются API через Compose:
+For AI generation, set your OpenRouter key in `.env`:
 
 ```dotenv
-AI_IP_HOURLY_LIMIT=5
-AI_IP_DAILY_LIMIT=20
-AI_SERVICE_DAILY_LIMIT=150
+OPENROUTER_API_KEY=your_key
+AI_MODEL=openai/gpt-6-luna
+AI_RESPONSE_FORMAT=json_schema
 ```
 
-это значения по умолчанию; допустимы положительные целые числа. после изменения `.env` пересоздай API через `sudo docker compose up -d`. при уменьшении квот уже записанные обращения сохраняются и продолжают учитываться.
+Use a model available to your OpenRouter account. Without a key, the editor and local template layouts remain available; the layer action identifies its source as **«шаблон»**.
 
-при превышении квоты API возвращает HTTP 429, `Retry-After` в секундах и сообщение «Лимит AI-генераций исчерпан. Повторите через N мин.». секунды также доступны в `error.retryAfterSeconds`; Composer показывает сообщение рядом с вводом. время округляется вверх и учитывает все одновременно превышенные квоты, исходя из текущих обращений. новые обращения других пользователей могут продлить ожидание глобальной квоты. ручное редактирование, серверный шаблон, автосохранение и SVG-экспорт не блокируются.
+```bash
+sudo docker compose up --build -d
+```
 
-в Compose счётчики записываются атомарно в `/app/data/ai-usage.json` на постоянном volume `api-data`, поэтому переживают пересоздание контейнера и деплой. проверка всех квот и запись нового обращения выполняются под одним mutex: параллельные запросы одного IP и разных IP не могут превысить общий лимит. сохраняются хеши IP. при ошибке сохранения основная модель не вызывается. это один экземпляр API; несколько независимых реплик требуют общего хранилища квот.
+Open **http://127.0.0.1:3000**. The `assets` container finishing with `Exited (0)` is expected: its prepared SVGs are shared with the API and web containers.
 
-внутренний nginx выставляет `X-Real-IP`, принимая адрес из последнего `X-Forwarded-For` только от хостового proxy через стандартную Docker bridge-сеть `172.16.0.0/12` или loopback. для другой bridge-подсети настрой `set_real_ip_from` в `web/nginx.conf`. API доверяет этому заголовку только при `AI_TRUST_PROXY=true` (установлено в Compose); наружу порт API не публикуется. при прямом запуске без Compose используются `RemoteAddr` и счётчики в памяти, если не задан `AI_USAGE_PATH`.
+```bash
+sudo docker compose logs --tail=100 assets api web
+sudo docker compose down
+```
 
-## управление
+## Using the editor
 
-| действие | управление |
+1. Enter an idea in Composer, or open an example to explore the editor.
+2. Add library objects with `+` or drag their thumbnails onto the canvas.
+3. To rearrange the current objects, use **«перекомпоновать объекты»** at the bottom of Layers. Repeat for another layout; one Undo restores the previous scene.
+4. Change the format or palette in Properties, then use **«экспорт svg»** above the canvas.
+
+The layer action supports **2–12 different built-in SVGs**. Custom SVGs, repeated copies of the same SVG, and locked layers disable it with an explanation. They remain available for manual editing. A literal list of catalog names in Composer uses the local template; other text goes directly to the main model.
+
+Projects and uploaded SVGs stay in the current browser's IndexedDB. Clearing site data removes them. SVG uploads support static vector content without scripts, raster images, or external resources; custom palette uploads use the example JSON available in Properties.
+
+| Action | Shortcut |
 | --- | --- |
-| перемещение вида | пробел + левая кнопка или средняя кнопка мыши |
-| масштаб вида | ctrl + колесо над холстом |
-| вписать | кнопка справа снизу |
-| отмена / повтор | ctrl / ⌘ + z / ctrl / ⌘ + shift + z; кнопки слева снизу |
-| дублирование перетаскиванием | alt + перетаскивание объекта |
-| удалить выделенный объект | delete / backspace, кроме заблокированных |
-| порядок слоя | перенос в списке или alt + стрелки вверх/вниз |
-| собрать / новая строка | enter / shift + enter |
-| закрыть всплывающие элементы | escape |
+| Pan the view | Space + drag, or middle mouse button |
+| Zoom the view | Ctrl + mouse wheel |
+| Duplicate an object | Alt + drag |
+| Undo / redo | Ctrl / ⌘ + Z / Ctrl / ⌘ + Shift + Z |
+| Send / new line | Enter / Shift + Enter |
 
-масштаб и перемещение **вида** не меняют сцену и экспорт. одно завершённое перетаскивание, дублирование с alt, масштабирование или вращение — один шаг undo. заблокированный объект можно выделить и разблокировать через слои. смена формата адаптирует объекты, сохраняя пропорции.
+View zoom and panning do not change the exported composition. Failed or cancelled generation keeps the current scene.
 
-## хранение
+## Configuration
 
-композиции и свои SVG автоматически сохраняются в IndexedDB браузера. очистка данных сайта удаляет их; итоговую иллюстрацию можно скачать как векторный SVG. поддерживаются статические SVG до 2 МБ без скриптов, растра и внешних ресурсов; они сохраняют собственные цвета. в свойствах есть три палитры с цветовым предпросмотром, загрузка своей палитры и пример JSON палитры — это отдельная возможность, не перенос проекта.
+See [`.env.example`](.env.example) for all settings. The API key stays on the backend.
 
-## GitHub CI/CD
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `AI_MODEL` | `openai/gpt-6-luna` | Main composition model |
+| `AI_BASE_URL` | `https://openrouter.ai/api/v1` | OpenAI-compatible endpoint |
+| `AI_RESPONSE_FORMAT` | `json_schema` | `json_schema`, `json_object`, or `text` |
+| `AI_IP_HOURLY_LIMIT` | `5` | Main-model calls per IP over a sliding hour |
+| `AI_IP_DAILY_LIMIT` | `20` | Main-model calls per IP over sliding 24 hours |
+| `AI_SERVICE_DAILY_LIMIT` | `150` | Main-model calls across the service over sliding 24 hours |
+| `WEB_BIND` | `127.0.0.1` | Published web interface |
+| `WEB_PORT` | `3000` | Published web port |
 
-`.github/workflows/check.yml` проверяет каждый push и pull request:
+The main model allows two concurrent generations, each with a 45-second timeout. Limits count dispatched model calls, including a separate repair call when needed. A quota response returns HTTP 429 with `Retry-After` and the remaining wait. Template layouts, editing, autosave, and export do not consume model quotas. Counters persist in a Docker volume.
 
-- Go: `go test -race`, `go vet`;
-- frontend: модульные тесты, TypeScript, production-сборка, prettier;
-- Playwright с настоящим шаблонным API и отдельной синтетической библиотекой, без оригиналов и платных запросов;
-- сборка всех трёх Docker-образов, отказ запуска без архива, запуск Compose на синтетическом архиве и HTTP-проверки;
-- на `main` после успешных проверок публикует `api`, `web`, `assets` в `ghcr.io/fanat-sira/syravec/…` с неизменяемым тегом SHA коммита и `latest`.
+After changing `.env`, run `sudo docker compose up -d` to recreate affected containers.
 
-оригинальные иллюстрации и ключи в образы не включаются.
+## How it works
 
-деплой выполняется установленным **self-hosted Linux x64 раннером** прямо на сервере, в **`/opt/syravec`**. проверки и сборка образов остаются на GitHub-hosted runners. после успешной публикации `main` вызывается workflow **deploy**; pull request не запускает код на сервере. SSH и переменные `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH` больше не используются.
+The model receives catalog descriptions, proportions, and visual metadata. It returns a JSON scene plan, never SVG source. Go validates the object IDs and parameters, then adjusts the layout. The canvas and SVG export use the same vector transforms.
 
-один раз подготовь на сервере папки от root, заменив `gha-runner`, если сервис раннера работает под другим пользователем:
+- [`api/`](api/) — HTTP API, model client, layout engine, and quotas.
+- [`web/`](web/) — React editor, SVG rendering, export, and browser storage.
+- [`scripts/`](scripts/) — asset preparation, deployment, and CI helpers.
+- [`deploy/`](deploy/) — nginx and certificate configuration.
 
-```bash
-id gha-runner
-install -d -m 750 -o gha-runner -g "$(id -gn gha-runner)" /opt/syravec /opt/syravec/originals
-```
+[Architecture](docs/architecture.md) · [Development](docs/development.md) · [Deployment and HTTPS](docs/deployment.md)
 
-положи приватный архив в `/opt/syravec/originals/assets.zip`, создай `/opt/syravec/.env` (может быть пустым без ai), предоставь пользователю раннера чтение этих файлов. пример настроек сохраняется при деплое в `/opt/syravec/.env.example`. на уже созданные `.env` и архив workflow ничего не записывает.
-
-проверь Docker от имени **пользователя раннера**, а не root:
-
-```bash
-runuser -u gha-runner -- docker info
-runuser -u gha-runner -- docker compose version
-```
-
-если доступа нет, добавь пользователя в группу `docker` и перезапусти сервис раннера, чтобы он получил новые группы. у пользователя также должны быть права записи в `/opt/syravec`. Go и Node.js на сервере деплоя не нужны.
-
-workflow выбирает раннер по меткам `[self-hosted, linux, x64]`; имя `syravec` отдельно меткой не является. если в репозитории несколько подходящих раннеров, назначь серверу дополнительную метку и добавь её в `runs-on` файла `deploy.yml`. настрой в GitHub environment **production** правила ручного одобрения, если они нужны. SSH-ключи и отдельный токен GHCR не требуются: workflow использует `GITHUB_TOKEN` с `packages: read`, изолированную конфигурацию Docker в каталоге временных файлов раннера и выход из GHCR после задания. пакеты должны быть доступны этому репозиторию.
-
-workflow **deploy** также можно запустить вручную из `main` с полным опубликованным SHA, в том числе для отката. `scripts/deploy.sh` сначала проверяет архив и скачивает образы, затем запускает Compose и ждёт healthcheck; если новая версия не проходит healthcheck, возвращает ранее записанный тег. `compose.release.yaml` подключает опубликованные образы. проект Docker имеет имя `syravec`, данные остаются в `/opt/syravec`; скрипт не выполняет `down -v` и не управляет другими Compose-проектами.
-
-по умолчанию сайт слушает `127.0.0.1:3000` на сервере. внешний доступ подключается через reverse proxy с HTTPS; адрес и порт можно изменить через `WEB_BIND`/`WEB_PORT` в серверном `.env`.
-
-GitHub Actions и удалённый деплой подтверждаются только реальным прогоном после push и настройки сервера; локальные результаты не заменяют эту проверку.
-
-## домен и HTTPS на существующем сервере
-
-домен приложения — **syravec.fanat-sira.art**, upstream — **127.0.0.1:3000**. существующий хостовый nginx продолжает обслуживать остальные сайты. контейнер SyraVec не публикует 80/443; отдельный nginx server block выбирает только точное имя домена, без `default_server` и wildcard.
-
-сначала проверь на сервере, что 3000 свободен или уже принадлежит SyraVec, а 80/443 обслуживает хостовый nginx:
-
-```bash
-ss -ltnp '( sport = :80 or sport = :443 or sport = :3000 )'
-nginx -t
-```
-
-настроечный скрипт предназначен для Ubuntu nginx с `sites-available/sites-enabled`. если используется Caddy, Apache, контейнерный nginx или нестандартная схема include — сначала адаптируй конфигурацию под фактический reverse proxy. скрипт не заменяет существующий proxy и не устанавливает nginx.
-
-после доставки файлов из репозитория в `/opt/syravec` запусти от root:
-
-```bash
-# certbot, curl, openssl и python3 должны быть установлены
-bash /opt/syravec/scripts/setup-domain-https.sh
-# необязательно: CERTBOT_EMAIL=you@example.com bash /opt/syravec/scripts/setup-domain-https.sh
-```
-
-DNS A/AAAA должен вести на этот сервер, входящие 80/443 должны быть доступны. webroot-проба проверяет, что hostname достигает именно подготовленного challenge-каталога, до запроса сертификата. Certbot использует `certonly --webroot`: существующие сайты не переписываются и веб-сервер не останавливается. скрипт создаёт только конфиг этого домена, проверяет `nginx -t` перед reload, сохраняет предыдущий собственный конфиг и откатывает его при неудаче до включения HTTPS. при найденном чужом конфиге того же домена останавливается для разбора.
-
-продление использует существующий `certbot.timer` или `snap.certbot.renew.timer`, а отдельный deploy hook перезагружает nginx только после обновления сертификата SyraVec. скрипт выполняет `certbot renew --cert-name syravec.fanat-sira.art --dry-run`. если timer отсутствует или dry-run не проходит, настройка сообщает об ошибке и не объявляет автообновление готовым.
-
-после запуска проверь:
-
-```bash
-curl -I http://syravec.fanat-sira.art
-curl -fsS https://syravec.fanat-sira.art/api/v1/health
-systemctl list-timers --all | grep -E 'certbot|snap.certbot'
-```
-
-сертификат можно выпустить до доставки приватной библиотеки. пока приложение не запущено, HTTPS будет отвечать ошибкой upstream; готовность сервиса подтверждается отдельно успешным `/api/v1/health`. bootstrap HTTPS выполняется от root один раз, обычный workflow деплоя не получает sudo и не запускает Certbot.
-
-документация: [Certbot webroot и продление](https://eff-certbot.readthedocs.io/en/stable/using.html), [nginx reload](https://nginx.org/en/docs/control.html).
-
-## локальная разработка и проверки
-
-это необязательный путь для разработки: нужны Node.js 24+, Go 1.23+; для подготовки оригиналов вне Docker также unzip и librsvg (`rsvg-convert`). основной пользовательский запуск выше их не требует.
-
-```bash
-node scripts/prepare-assets.mjs
-# в отдельных терминалах:
-cd api && go run .
-cd web && npm ci && npm run dev
-```
-
-проверки: `cd api && go test -race ./... && go vet ./...`; `cd web && npm test && npm run build && npm run format:check && npx playwright test`. для браузерных тестов нужны работающие API и Vite, Chrome по `CHROME_PATH` либо `/usr/bin/google-chrome-stable`. для тестирования без оригиналов `node scripts/create-test-assets.mjs /tmp/syravec-test-public`, затем передай API `CATALOG_PATH=/tmp/syravec-test-public/assets/manifest.json`, Vite — `SYRAVEC_TEST_PUBLIC_DIR=/tmp/syravec-test-public`. синтетические SVG не заменяют оригинальную библиотеку продукта.
-
-`scripts/evaluate-ai.mjs` — отдельная платная оценка 12 реальных AI-композиций при настроенном ключе, автоматически не запускается.
-
-[проверки и ограничения](docs/verification.md) · [архитектура](docs/architecture.md)
-
-логотип и favicon используют puzzle из lucide-react; лицензия — `web/public/lucide-license.txt`.
+GitHub Actions runs the configured checks, builds and publishes images, and deploys successful `main` pushes through a self-hosted runner. See the deployment guide before configuring a fork or another server.

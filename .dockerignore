@@ -16,3 +16,10 @@ release.tgz
 
 # локальное состояние рабочего инструмента
 .ori/
+
+# private working notes and generated asset reports
+local-notes/
+docs/source-colors.json
+
+# repository documentation is not needed in runtime builds
+docs/images/

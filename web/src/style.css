@@ -2541,3 +2541,35 @@ button:active:not(:disabled) {
     -webkit-text-fill-color: #4b4850;
   }
 }
+
+.layers-compose {
+  flex-shrink: 0;
+  padding: 4px 12px 6px;
+  background: #fdfcfe;
+}
+.layers-compose-button {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid #d9cce9;
+  border-radius: 8px;
+  background: #f0e9fa;
+  color: #654789;
+  font-size: 12px;
+}
+.layers-compose-button:hover:not(:disabled) {
+  background: #e7dcf5;
+}
+.layers-compose .compose-method {
+  margin-left: auto;
+  font-size: 10px;
+  color: #72538d;
+}
+.section-layers > .section-body {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}

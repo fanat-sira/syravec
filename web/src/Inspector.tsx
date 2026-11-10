@@ -8,6 +8,9 @@ import {
 } from "react";
 import {
   ChevronDown,
+  Shuffle,
+  Square,
+  LoaderCircle,
   Plus,
   Upload,
   Download,
@@ -42,6 +45,12 @@ interface Props {
   close: () => void;
   libraryExpanded: boolean;
   setLibraryExpanded: (v: boolean) => void;
+  recompose: () => void;
+  recomposeUnavailable: string;
+  composing: boolean;
+  recomposing: boolean;
+  cancelRecompose: () => void;
+  aiConfigured: boolean | null;
 }
 function Section({
   name,
@@ -49,6 +58,7 @@ function Section({
   open,
   toggle,
   children,
+  footer,
   kind,
   height,
 }: {
@@ -57,6 +67,7 @@ function Section({
   open: boolean;
   toggle: () => void;
   children: ReactNode;
+  footer?: ReactNode;
   kind: string;
   height: number;
 }) {
@@ -78,6 +89,7 @@ function Section({
       <div id={`section-${kind}`} className="section-body" hidden={!open}>
         {children}
       </div>
+      {open && footer}
     </section>
   );
 }
@@ -404,6 +416,55 @@ export function Inspector(p: Props) {
           toggle={() => toggle(1)}
           height={layout.sizes[1]}
           kind="layers"
+          footer={
+            p.scene.layers.length > 0 && (
+              <div
+                className="layers-compose"
+                title={
+                  p.recomposeUnavailable || "расположить текущие объекты заново"
+                }
+                tabIndex={p.recomposeUnavailable ? 0 : undefined}
+                aria-describedby="layers-compose-hint"
+              >
+                <button
+                  className="layers-compose-button"
+                  onClick={p.recomposing ? p.cancelRecompose : p.recompose}
+                  disabled={
+                    !p.recomposing && (p.composing || !!p.recomposeUnavailable)
+                  }
+                  aria-describedby="layers-compose-hint"
+                  title={
+                    p.recomposeUnavailable ||
+                    "автоматически расположить текущие объекты; отмена — ctrl / ⌘ + z"
+                  }
+                >
+                  {p.recomposing ? (
+                    <Square size={13} fill="currentColor" strokeWidth={0} />
+                  ) : p.composing ? (
+                    <LoaderCircle size={15} className="spin" />
+                  ) : (
+                    <Shuffle size={15} />
+                  )}
+                  {p.recomposing
+                    ? "остановить перекомпоновку"
+                    : "перекомпоновать объекты"}
+                  {!p.recomposing && p.aiConfigured !== null && (
+                    <span className="compose-method">
+                      {p.aiConfigured ? "ai" : "шаблон"}
+                    </span>
+                  )}
+                </button>
+                <small id="layers-compose-hint" hidden>
+                  {p.recomposeUnavailable ||
+                    (p.aiConfigured === false
+                      ? "шаблонная сборка · ai не подключен"
+                      : p.aiConfigured === true
+                        ? "ai расставит только эти объекты"
+                        : "автоматическая компоновка текущих объектов")}
+                </small>
+              </div>
+            )
+          }
         >
           <div className="layer-list">
             {p.scene.layers.toReversed().map((l) => {

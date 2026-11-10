@@ -9,6 +9,21 @@ test("слои не меняют высоту при выделении и ши�
 }) => {
   await page.goto("/");
   await page.getByRole("button", { name: /знания открывают двери/ }).click();
+  // Give the list room for three rows above its persistent compose action.
+  const initialDivider = (await page
+    .getByRole("separator", { name: "высота слоев" })
+    .boundingBox())!;
+  await page.mouse.move(
+    initialDivider.x + initialDivider.width / 2,
+    initialDivider.y + 3,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    initialDivider.x + initialDivider.width / 2,
+    initialDivider.y + 140,
+    { steps: 5 },
+  );
+  await page.mouse.up();
   const row = page.locator(".layer-row").first(),
     body = page.locator(".section-layers .section-body");
   const before = (await row.boundingBox())!,
