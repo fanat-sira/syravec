@@ -2647,3 +2647,345 @@ h1 {
 .palette-actions > .icon-button {
   flex-shrink: 0;
 }
+
+/* Final interaction and spacing rules. The stage owns its available rectangle. */
+:root {
+  --muted: #74697f;
+  --control-size: 34px;
+  --stage-gap: 12px;
+}
+.main-shell {
+  container-type: inline-size;
+}
+.sidebar {
+  padding-top: 12px;
+}
+.brand-row {
+  min-height: 36px;
+}
+.brand-row .brand {
+  margin-left: 0;
+}
+.stage-top-actions,
+.floating-sidebar-toggle,
+.floating-inspector-toggle {
+  top: var(--stage-gap);
+}
+.primary-export {
+  min-height: 36px;
+}
+.scene-viewport {
+  inset: 0;
+}
+.stage-fit-area {
+  position: absolute;
+  inset: 60px var(--inspector-space) var(--dock-space) 0;
+  pointer-events: none;
+}
+.stage-fit-area > .artboard-wrap {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  margin: 0;
+  pointer-events: auto;
+  will-change: transform;
+}
+.editor-dock {
+  grid-template-columns: 160px minmax(0, 690px) 160px;
+}
+.dock-left,
+.dock-right {
+  min-width: 0;
+}
+.dock-right {
+  justify-self: end;
+}
+.chat-history,
+.chat-history .conversation {
+  pointer-events: none;
+}
+.chat-history .generation-record {
+  pointer-events: auto;
+}
+.chat-history .conversation {
+  overflow-y: auto;
+  scrollbar-gutter: auto;
+}
+.chat-history:not(.is-focused) .conversation {
+  scrollbar-width: none;
+}
+.chat-history:not(.is-focused) .conversation::-webkit-scrollbar {
+  display: none;
+  width: 0;
+}
+.chat-history .conversation:before {
+  pointer-events: none;
+}
+.chat-history .generation-record.error {
+  border-color: #bd7595;
+  color: #873456;
+}
+.chat-history .generation-record small {
+  display: block;
+  color: #71557f;
+}
+.composer-control-row {
+  flex-wrap: wrap;
+}
+.ai-controls > .icon-button {
+  width: auto;
+  min-width: 34px;
+  gap: 4px;
+  padding: 5px 7px;
+  color: #624877;
+  font-size: 11px;
+}
+.generation-progress {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 4px 0;
+  font-size: 12px;
+  color: #604575;
+}
+.generation-progress button {
+  margin-left: auto;
+  text-decoration: underline;
+  padding: 3px;
+}
+.picked-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.picked-chips button {
+  flex-shrink: 0;
+  max-width: 45%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.history-row {
+  min-height: 40px;
+}
+.rename-project,
+.delete-project {
+  flex-shrink: 0;
+  width: 26px;
+  padding: 5px;
+  opacity: 0;
+}
+.history-row:hover .rename-project,
+.history-row:focus-within .rename-project,
+.history-row:focus-within .delete-project {
+  opacity: 1;
+}
+.project-rename {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+  padding: 4px;
+}
+.project-rename input {
+  width: 0;
+  min-width: 0;
+  flex: 1;
+  padding: 6px;
+  border: 1px solid #a38dc3;
+  border-radius: 6px;
+  background: white;
+  font-size: 12px;
+}
+.project-rename button {
+  width: 24px;
+  padding: 3px;
+  flex-shrink: 0;
+}
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: #30213e66;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+.confirm-delete {
+  max-width: 420px;
+  width: 100%;
+  border-radius: 14px;
+  background: #fdfbfe;
+  padding: 24px;
+  box-shadow: 0 12px 50px #30213e44;
+}
+.confirm-delete h2 {
+  font-size: 18px;
+  margin: 0 0 12px;
+}
+.confirm-delete p {
+  color: #665473;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.confirm-delete > div {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+.confirm-delete button {
+  min-height: 36px;
+  padding: 8px 12px;
+  background: #eae0f6;
+  border-radius: 8px;
+}
+.confirm-delete .danger {
+  background: #933c62;
+  color: white;
+}
+.library-hint {
+  color: #6c5679;
+  font-size: 11px;
+  margin: 0 0 10px;
+  line-height: 1.4;
+}
+.asset-preview {
+  position: relative;
+}
+.variant-badge {
+  position: absolute;
+  bottom: 3px;
+  left: 3px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: #ffffffed;
+  font-size: 9px;
+  color: #604777;
+  pointer-events: none;
+}
+.asset-card.is-picked {
+  box-shadow: inset 0 0 0 2px #8764ba;
+  border-radius: 8px;
+}
+.property-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.property-tabs button {
+  flex: 1;
+  padding: 7px;
+  border-radius: 6px;
+  background: #f0eaf7;
+  font-size: 11px;
+  color: #654c78;
+}
+.property-tabs button[aria-pressed="true"] {
+  background: #e0d4f1;
+  color: #4b3264;
+}
+.palette-previews {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 10px 0;
+}
+.palette-previews button {
+  display: flex;
+  gap: 0;
+  padding: 4px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+}
+.palette-previews button[aria-pressed="true"] {
+  border-color: #7864d7;
+}
+.palette-previews span {
+  width: 10px;
+  height: 18px;
+}
+.layer-row .layer-select small,
+.composition-size,
+.properties label,
+.asset-card-heading,
+.asset-card-controls select,
+.composer-tabs > button,
+.sidebar-bottom > button {
+  color: #6b527c;
+}
+.layer-row .layer-select small {
+  font-size: 10px;
+}
+textarea:focus-visible {
+  outline: 2px solid var(--purple);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+button:active:not(:disabled) {
+  filter: brightness(0.92);
+}
+.selection {
+  pointer-events: none;
+}
+.selection circle,
+.selection rect[aria-label] {
+  pointer-events: auto;
+}
+@container (max-width: 1050px) {
+  .editor-dock {
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 8px;
+    left: 12px;
+    right: calc(var(--inspector-space) + 12px);
+    bottom: 12px;
+  }
+  .editor-dock > .composer-stack {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+  .dock-left {
+    grid-row: 2;
+    justify-self: start;
+  }
+  .dock-right {
+    grid-row: 2;
+    justify-self: end;
+  }
+  .dock-left,
+  .dock-right {
+    min-height: 34px;
+  }
+}
+@media (hover: none) {
+  .rename-project,
+  .delete-project {
+    opacity: 1;
+  }
+}
+@media (max-width: 760px) {
+  .editor-dock {
+    right: 12px;
+  }
+  .inspector {
+    top: 12px;
+    right: 12px;
+    bottom: 12px;
+  }
+}
+.zoom-tools > .icon-button,
+.zoom-tools > .icon-button[title] {
+  min-width: 30px;
+  width: 30px;
+  height: 32px;
+}
+.history-tools > .icon-button {
+  width: 34px;
+  height: 34px;
+  padding: 7px;
+}
+.artboard-wrap > .artboard {
+  height: 100%;
+}

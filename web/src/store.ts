@@ -70,6 +70,7 @@ interface State {
   newProject: () => void;
   openProject: (id: string) => void;
   removeProject: (id: string) => void;
+  renameProject: (id: string, title: string) => void;
   setScene: (s: Scene, record?: boolean) => void;
   importProject: (data: {
     scene: Scene;
@@ -105,18 +106,39 @@ export const useStore = create<State>()(
           future: [],
           revision: s.revision + 1,
         })),
-      openProject: (id) =>
+      openProject: (id) => {
+        if (get().current === id) return;
         set((s) => ({
           current: id,
           selected: null,
           past: [],
           future: [],
           revision: s.revision + 1,
+        }));
+      },
+      renameProject: (id, title) =>
+        set((s) => ({
+          projects: s.projects.map((p) =>
+            p.id === id
+              ? {
+                  ...p,
+                  title: title.trim().slice(0, 120) || p.title,
+                  titleEdited: true,
+                  updatedAt: Date.now(),
+                }
+              : p,
+          ),
         })),
       removeProject: (id) =>
         set((s) => ({
           projects: s.projects.filter((p) => p.id !== id),
-          current: s.current === id ? null : s.current,
+          current:
+            s.current === id
+              ? (s.projects.find((p) => p.id !== id)?.id ?? null)
+              : s.current,
+          selected: s.current === id ? null : s.selected,
+          past: s.current === id ? [] : s.past,
+          future: s.current === id ? [] : s.future,
           revision: s.revision + 1,
         })),
       setScene: (scene, record = true) => {
@@ -167,6 +189,7 @@ export const useStore = create<State>()(
             {
               id,
               title: data.title || "импортированная композиция",
+              titleEdited: !!data.title,
               scene: data.scene,
               messages: data.messages ?? [],
               generations: data.generations ?? [],
@@ -195,7 +218,7 @@ export const useStore = create<State>()(
               ? {
                   ...p,
                   title:
-                    role === "user" && p.messages.length === 0
+                    role === "user" && p.messages.length === 0 && !p.titleEdited
                       ? text.slice(0, 55)
                       : p.title,
                   messages: [...p.messages, { role, text }],

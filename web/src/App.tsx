@@ -23,6 +23,8 @@ import {
   Minimize2,
   Scan,
   ChevronDown,
+  Pencil,
+  Check,
 } from "lucide-react";
 import { useStore } from "./store";
 import {
@@ -37,6 +39,12 @@ import {
 import { Canvas } from "./Canvas";
 import { Inspector } from "./Inspector";
 import { download, exportSVG, sanitize, parsePalette, paletteFor } from "./svg";
+const fileName = (title = "композиция") =>
+  title
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, "-")
+    .replace(/[. ]+$/g, "")
+    .trim()
+    .slice(0, 100) || "композиция";
 const examples = [
   {
     title: "знания открывают двери",
@@ -77,7 +85,10 @@ export default function App() {
     [settings, setSettings] = useState(false),
     [inspectorOpen, setInspectorOpen] = useState(false),
     [historyOpen, setHistoryOpen] = useState(false),
-    [zoomOpen, setZoomOpen] = useState(false);
+    [zoomOpen, setZoomOpen] = useState(false),
+    [renaming, setRenaming] = useState<string | null>(null),
+    [renameText, setRenameText] = useState(""),
+    [deleting, setDeleting] = useState<string | null>(null);
   const conversationRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLElement>(null),
     stackRef = useRef<HTMLDivElement>(null),
@@ -86,11 +97,41 @@ export default function App() {
   const [historyHeight, setHistoryHeight] = useState(0);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const inEditor = !!project;
+  const activeProject = useRef(st.current);
+  useEffect(() => {
+    if (activeProject.current === st.current) return;
+    const previous = activeProject.current;
+    activeProject.current = st.current;
+    // Creating the first scene by adding an asset keeps the current Composer selection.
+    if (!previous && st.current) return;
+    resetComposer();
+  }, [st.current]);
+  function resetComposer() {
+    controller.current?.abort();
+    setPicked([]);
+    setPrompt("");
+    setMode("concept");
+    setSettings(false);
+    setHistoryOpen(false);
+    setZoomOpen(false);
+    setZoom(100);
+    setViewReset((v) => v + 1);
+  }
+  function finishRename(id: string) {
+    st.renameProject(id, renameText);
+    setRenaming(null);
+  }
   useLayoutEffect(() => {
     const main = mainRef.current,
       stack = stackRef.current;
     if (!main || !stack) return;
-    const measure = () =>
+    const measure = () => {
+      const dock = main.querySelector<HTMLElement>(".editor-dock");
+      if (dock)
+        main.style.setProperty(
+          "--dock-space",
+          `${main.getBoundingClientRect().bottom - dock.getBoundingClientRect().top + 20}px`,
+        );
       setHistoryHeight(
         Math.max(
           0,
@@ -99,10 +140,13 @@ export default function App() {
             20,
         ),
       );
+    };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(main);
     observer.observe(stack);
+    const dock = main.querySelector(".editor-dock");
+    if (dock) observer.observe(dock);
     return () => observer.disconnect();
   }, [inEditor, loading, st.hydrated]);
   useEffect(() => {
@@ -191,7 +235,9 @@ export default function App() {
         }
       } catch {
         if (!cancelled) {
-          setLoadError("не удалось загрузить библиотеку, обнови страницу");
+          setLoadError(
+            "библиотека SVG недоступна. положи исходный архив в originals/Тестовое _ иллюстрации(2).zip и выполни sudo docker compose up --build -d. подробности — в README.",
+          );
           setLoading(false);
         }
       }
@@ -218,6 +264,7 @@ export default function App() {
   }, [notice]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if (deleting || renaming) return;
       const target = e.target;
       const editingText =
         target instanceof HTMLTextAreaElement ||
@@ -323,6 +370,7 @@ export default function App() {
     const revision = before.revision,
       current = before.current,
       snapshot = before.projects.find((p) => p.id === current)!.scene;
+    activeProject.current = current;
     const generationId = uid();
     let generationSource: "llm" | "fallback" =
       planner === "llm" ? "llm" : "fallback";
@@ -378,8 +426,16 @@ export default function App() {
           }),
         });
         const data = await r.json();
-        if (!r.ok)
+        if (!r.ok) {
+          if (
+            ["prompt_rejected", "prompt_uncertain"].includes(
+              data.error?.code,
+            ) &&
+            useStore.getState().current === current
+          )
+            setPrompt((draft) => draft || text);
           throw Error(data.error?.message || "не удалось собрать композицию");
+        }
         const { validateProject } = await import("./validate");
         result = validateProject(
           { scene: { ...data.scene, customPalette: snapshot.customPalette } },
@@ -468,7 +524,10 @@ export default function App() {
   }
   function exportFile() {
     try {
-      download(exportSVG(scene, assets, sources), "syravec.svg");
+      download(
+        exportSVG(scene, assets, sources),
+        `${fileName(project?.title)}.svg`,
+      );
     } catch (e) {
       setNotice((e as Error).message);
     }
@@ -481,6 +540,7 @@ export default function App() {
       const { readProject } = await import("./validate");
       const imported = readProject(raw, assets);
       st.importProject(imported);
+      resetComposer();
     } catch (e) {
       setNotice((e as Error).message);
     }
@@ -491,7 +551,7 @@ export default function App() {
       const { serializeProject } = await import("./validate");
       download(
         serializeProject(project, st.customAssets),
-        "syravec-project.json",
+        `${fileName(project.title)}.json`,
         "application/json",
       );
     } catch (e) {
@@ -508,7 +568,7 @@ export default function App() {
   return (
     <div className={`app ${sidebar ? "" : "sidebar-hidden"}`}>
       {sidebar && (
-        <aside className="sidebar">
+        <aside className="sidebar" inert={!!deleting}>
           <div className="brand-row">
             <a
               className="brand"
@@ -516,6 +576,7 @@ export default function App() {
               onClick={(e) => {
                 e.preventDefault();
                 st.newProject();
+                resetComposer();
               }}
             >
               <Puzzle
@@ -529,6 +590,7 @@ export default function App() {
             </a>
             <button
               className="icon-button"
+              title="переключить боковую панель"
               aria-label="переключить боковую панель"
               onClick={() => setSidebar(false)}
             >
@@ -539,8 +601,7 @@ export default function App() {
             className="new-project"
             onClick={() => {
               st.newProject();
-              setPicked([]);
-              setPrompt("");
+              resetComposer();
               if (window.innerWidth <= 760) setSidebar(false);
             }}
           >
@@ -554,20 +615,78 @@ export default function App() {
                   className={`history-row ${p.id === st.current ? "active" : ""}`}
                   key={p.id}
                 >
-                  <button
-                    onClick={() => {
-                      st.openProject(p.id);
-                      setPicked([]);
-                      if (window.innerWidth <= 760) setSidebar(false);
-                    }}
-                  >
-                    <MessageSquare size={16} />
-                    <span>{p.title}</span>
-                  </button>
+                  {renaming === p.id ? (
+                    <form
+                      className="project-rename"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        finishRename(p.id);
+                      }}
+                    >
+                      <input
+                        autoFocus
+                        aria-label="название композиции"
+                        maxLength={120}
+                        value={renameText}
+                        onChange={(e) => setRenameText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") {
+                            e.stopPropagation();
+                            setRenaming(null);
+                          }
+                        }}
+                      />
+                      <button
+                        type="submit"
+                        aria-label="сохранить название"
+                        title="сохранить название · enter"
+                      >
+                        <Check size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="отменить переименование"
+                        title="отменить · esc"
+                        onClick={() => setRenaming(null)}
+                      >
+                        <X size={14} />
+                      </button>
+                    </form>
+                  ) : (
+                    <button
+                      title={p.title}
+                      onDoubleClick={() => {
+                        setRenaming(p.id);
+                        setRenameText(p.title);
+                      }}
+                      onClick={() => {
+                        st.openProject(p.id);
+                        setPicked([]);
+                        if (window.innerWidth <= 760) setSidebar(false);
+                      }}
+                    >
+                      <MessageSquare size={16} />
+                      <span>{p.title}</span>
+                    </button>
+                  )}
+                  {renaming !== p.id && (
+                    <button
+                      className="rename-project"
+                      aria-label={`переименовать ${p.title}`}
+                      title="переименовать композицию"
+                      onClick={() => {
+                        setRenaming(p.id);
+                        setRenameText(p.title);
+                      }}
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )}
                   <button
                     aria-label={`удалить ${p.title}`}
                     className="delete-project"
-                    onClick={() => st.removeProject(p.id)}
+                    title="удалить композицию"
+                    onClick={() => setDeleting(p.id)}
                   >
                     <Trash2 size={13} />
                   </button>
@@ -576,7 +695,11 @@ export default function App() {
           </nav>
           <div className="sidebar-bottom">
             {project && (
-              <button aria-label="сохранить проект json" onClick={saveProject}>
+              <button
+                title="сохранить проект json"
+                aria-label="сохранить проект json"
+                onClick={saveProject}
+              >
                 <Download size={16} /> сохранить проект
               </button>
             )}
@@ -586,10 +709,11 @@ export default function App() {
           </div>
         </aside>
       )}
-      <main className="main-shell" ref={mainRef}>
+      <main className="main-shell" ref={mainRef} inert={!!deleting}>
         {!sidebar && (
           <button
             className="icon-button floating-sidebar-toggle"
+            title="переключить боковую панель"
             aria-label="переключить боковую панель"
             onClick={() => setSidebar(true)}
           >
@@ -668,6 +792,7 @@ export default function App() {
                     <div className="history-tools">
                       <button
                         className="icon-button"
+                        title="отменить · ctrl / ⌘ + z"
                         aria-label="отменить"
                         disabled={!st.past.length}
                         onClick={st.undo}
@@ -676,6 +801,7 @@ export default function App() {
                       </button>
                       <button
                         className="icon-button"
+                        title="повторить · ctrl / ⌘ + shift + z"
                         aria-label="повторить"
                         disabled={!st.future.length}
                         onClick={st.redo}
@@ -689,6 +815,7 @@ export default function App() {
                     <div className="zoom-tools" ref={zoomMenuRef}>
                       <button
                         className="icon-button"
+                        title="уменьшить холст"
                         aria-label="уменьшить холст"
                         onClick={() => setZoom((z) => Math.max(25, z / 1.25))}
                       >
@@ -696,6 +823,7 @@ export default function App() {
                       </button>
                       <button
                         className="zoom-current"
+                        title="текущий масштаб"
                         aria-label="текущий масштаб"
                         aria-haspopup="menu"
                         aria-expanded={zoomOpen}
@@ -705,6 +833,7 @@ export default function App() {
                       </button>
                       <button
                         className="icon-button"
+                        title="увеличить холст"
                         aria-label="увеличить холст"
                         onClick={() => setZoom((z) => Math.min(400, z * 1.25))}
                       >
@@ -761,6 +890,7 @@ export default function App() {
               )}
               <button
                 className="icon-button inspector-toggle floating-inspector-toggle"
+                title="открыть инспектор"
                 aria-label="открыть инспектор"
                 onClick={() => setInspectorOpen(true)}
               >
@@ -770,6 +900,7 @@ export default function App() {
             {inspectorOpen && (
               <button
                 className="inspector-backdrop"
+                title="закрыть панель слоев"
                 aria-label="закрыть панель слоев"
                 onClick={() => setInspectorOpen(false)}
               />
@@ -800,6 +931,7 @@ export default function App() {
         <div className="toast" role="status">
           <span>{notice || st.storageError}</span>
           <button
+            title="закрыть уведомление"
             aria-label="закрыть уведомление"
             onClick={() => {
               setNotice("");
@@ -808,6 +940,54 @@ export default function App() {
           >
             <X size={16} />
           </button>
+        </div>
+      )}
+      {deleting && (
+        <div className="confirm-backdrop" onClick={() => setDeleting(null)}>
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-heading"
+            aria-describedby="delete-description"
+            className="confirm-delete"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.stopPropagation();
+                setDeleting(null);
+              }
+              if (e.key === "Tab") {
+                const buttons =
+                  e.currentTarget.querySelectorAll<HTMLButtonElement>("button");
+                const next = e.shiftKey ? buttons[0] : buttons[1];
+                if (document.activeElement === next) {
+                  e.preventDefault();
+                  (e.shiftKey ? buttons[1] : buttons[0]).focus();
+                }
+              }
+            }}
+          >
+            <h2 id="delete-heading">удалить композицию?</h2>
+            <p id="delete-description">
+              «{st.projects.find((p) => p.id === deleting)?.title}» и все её
+              сохранённые результаты будут удалены. это действие нельзя
+              отменить.
+            </p>
+            <div>
+              <button autoFocus onClick={() => setDeleting(null)}>
+                оставить
+              </button>
+              <button
+                className="danger"
+                onClick={() => {
+                  st.removeProject(deleting);
+                  setDeleting(null);
+                }}
+              >
+                удалить композицию
+              </button>
+            </div>
+          </div>
         </div>
       )}
       <input
@@ -858,23 +1038,21 @@ export default function App() {
               className="conversation"
               ref={conversationRef}
               aria-label="история запросов"
-              tabIndex={0}
+              tabIndex={historyOpen ? 0 : -1}
             >
               {project?.generations?.length
                 ? project.generations.map((g) => (
-                    <div className="generation-record" key={g.id}>
+                    <div className={`generation-record ${g.status}`} key={g.id}>
                       <div>
                         <span>{g.prompt}</span>
-                        {historyOpen && (
-                          <small>
-                            {g.source === "llm" ? "ai" : "шаблон"} ·{" "}
-                            {g.mode === "concept" ? "по идее" : "из объектов"} ·{" "}
-                            {new Date(g.createdAt).toLocaleTimeString("ru", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </small>
-                        )}
+                        <small>
+                          {g.source === "llm" ? "ai" : "шаблон"} ·{" "}
+                          {g.mode === "concept" ? "по идее" : "из объектов"} ·{" "}
+                          {new Date(g.createdAt).toLocaleTimeString("ru", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </small>
                       </div>
                       {g.status === "success" && g.scene ? (
                         historyOpen && (
@@ -936,6 +1114,7 @@ export default function App() {
           {busy ? (
             <button
               className="generate"
+              title="отменить текущую сборку"
               aria-label="остановить сборку"
               onClick={() => controller.current?.abort()}
             >
@@ -944,6 +1123,7 @@ export default function App() {
           ) : (
             <button
               className="generate"
+              title="собрать композицию · enter (shift + enter — новая строка)"
               aria-label="собрать композицию"
               disabled={!ready}
               onClick={() => void generate()}
@@ -952,15 +1132,30 @@ export default function App() {
             </button>
           )}
         </div>
+        {busy && (
+          <div className="generation-progress" role="status">
+            <LoaderCircle className="spin" size={13} />{" "}
+            {planner === "llm"
+              ? "ai собирает композицию…"
+              : "собираю по шаблону…"}
+            <button onClick={() => controller.current?.abort()}>
+              отменить
+            </button>
+          </div>
+        )}
         <div className="composer-tabs composer-control-row">
           <button
             className={mode === "concept" ? "active" : ""}
+            aria-pressed={mode === "concept"}
+            disabled={busy}
             onClick={() => setMode("concept")}
           >
             <Sparkles size={14} /> по идее
           </button>
           <button
             className={mode === "selection" ? "active" : ""}
+            aria-pressed={mode === "selection"}
+            disabled={busy}
             onClick={() => {
               setMode("selection");
               openLibrary();
@@ -977,7 +1172,8 @@ export default function App() {
               aria-expanded={settings}
               onClick={() => setSettings(!settings)}
             >
-              <SlidersHorizontal size={16} />
+              <SlidersHorizontal size={14} />
+              <span>{planner === "llm" ? "ai" : "шаблон"}</span>
             </button>
             {settings && (
               <div className="ai-settings">
@@ -985,6 +1181,7 @@ export default function App() {
                   сборка
                   <select
                     aria-label="способ сборки"
+                    disabled={busy}
                     value={planner}
                     onChange={(e) =>
                       setPlanner(e.target.value as typeof planner)
@@ -1015,7 +1212,7 @@ export default function App() {
         </div>
         {mode === "selection" && picked.length > 0 && (
           <div className="picked-chips">
-            {picked.map((id) => (
+            {picked.slice(0, 2).map((id) => (
               <button
                 key={id}
                 onClick={() => setPicked(picked.filter((v) => v !== id))}
@@ -1024,6 +1221,17 @@ export default function App() {
                 <X size={11} />
               </button>
             ))}
+            {picked.length > 2 && (
+              <button
+                title={picked
+                  .slice(2)
+                  .map((id) => assets.find((a) => a.id === id)?.displayName)
+                  .join(", ")}
+                onClick={openLibrary}
+              >
+                ещё {picked.length - 2}
+              </button>
+            )}
           </div>
         )}
       </div>

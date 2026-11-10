@@ -1,0 +1,8 @@
+# Готовые образы из GitHub Actions. Основной локальный запуск использует compose.yaml.
+services:
+  assets:
+    image: ${SYRAVEC_IMAGE:?set SYRAVEC_IMAGE}/assets:${SYRAVEC_TAG:?set SYRAVEC_TAG}
+  api:
+    image: ${SYRAVEC_IMAGE:?set SYRAVEC_IMAGE}/api:${SYRAVEC_TAG:?set SYRAVEC_TAG}
+  web:
+    image: ${SYRAVEC_IMAGE:?set SYRAVEC_IMAGE}/web:${SYRAVEC_TAG:?set SYRAVEC_TAG}

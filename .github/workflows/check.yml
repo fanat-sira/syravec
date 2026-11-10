@@ -2,6 +2,11 @@ name: checks
 on:
   push:
   pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   api:
     runs-on: ubuntu-latest
@@ -10,8 +15,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
-          cache-dependency-path: api/go.mod
-      - run: go test ./... && go vet ./...
+          cache: false
+      - run: go test -race ./... && go vet ./...
         working-directory: api
   web:
     runs-on: ubuntu-latest
@@ -22,7 +27,114 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: false
       - run: npm ci
         working-directory: web
-      - run: npm test && npm run build
+      - run: npm test && npm run build && npm run format:check
         working-directory: web
+      - run: npx playwright install --with-deps chromium
+        working-directory: web
+      - name: Browser tests with isolated synthetic vectors and real template API
+        run: |
+          node scripts/create-test-assets.mjs /tmp/syravec-test-public
+          (cd api && CATALOG_PATH=/tmp/syravec-test-public/assets/manifest.json go run .) > /tmp/syravec-api.log 2>&1 &
+          (cd web && SYRAVEC_TEST_PUBLIC_DIR=/tmp/syravec-test-public npm run dev) > /tmp/syravec-web.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/api/v1/health && curl -fsS http://127.0.0.1:5173/ > /dev/null; then break; fi
+            sleep 1
+          done
+          cd web
+          CHROME_PATH=$(node --input-type=module -e 'import {chromium} from "@playwright/test"; console.log(chromium.executablePath())') npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-verification
+          path: |
+            artifacts/
+            web/test-results/
+            /tmp/syravec-api.log
+            /tmp/syravec-web.log
+  containers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deployment guards and rollback logic (without a server)
+        run: sh scripts/test-deploy.sh
+      - name: Check Compose and build all three images
+        run: |
+          docker compose config -q
+          docker compose build
+      - name: Missing private archive blocks startup with instructions
+        run: |
+          if docker compose run --rm assets > /tmp/assets-missing.log 2>&1; then
+            echo 'asset preparation must fail without originals'; exit 1
+          fi
+          cat /tmp/assets-missing.log
+          grep -F 'sudo docker compose up --build -d' /tmp/assets-missing.log
+      - name: Prepare a synthetic source archive for container smoke test
+        run: |
+          mkdir -p originals
+          python3 - <<'PY'
+          import zipfile
+          names = ['Пазлы','Книга','Телефон','Наушники','Лампа','Кошелек','Ручка','Папка','Монета']
+          names = names + [n+'-1' for n in names] + ['Group 2136136344','Group 2136136347','Фон','Фон-1','Фон-2']
+          with zipfile.ZipFile('originals/Тестовое _ иллюстрации(2).zip', 'w') as archive:
+              for name in names:
+                  archive.writestr(name+'.svg', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path fill="#7864d7" d="M0 0h100v100H0Z"/></svg>')
+          PY
+      - name: One-command startup and HTTP smoke test
+        run: |
+          docker compose up --build -d --wait --wait-timeout 120
+          curl -fsS http://127.0.0.1:3000/api/v1/health
+          curl -fsS http://127.0.0.1:3000/assets/manifest.json
+          curl -fsS http://127.0.0.1:3000/assets/book-main.svg
+      - name: Container logs
+        if: always()
+        run: docker compose logs
+      - name: Clean up test containers
+        if: always()
+        run: docker compose down -v
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [api, web, containers]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - name: api
+            dockerfile: api/Dockerfile
+          - name: web
+            dockerfile: web/Dockerfile
+          - name: assets
+            dockerfile: scripts/assets.Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/${{ matrix.name }}:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/${{ matrix.name }}:latest
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: publish
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/deploy.yml
+    with:
+      tag: ${{ github.sha }}

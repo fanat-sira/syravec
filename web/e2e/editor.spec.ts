@@ -189,7 +189,9 @@ test("режим выбранных объектов, своя палитра и
       buffer: Buffer.from(JSON.stringify(palette)),
     });
 
-  expect(await page.locator(".artboard").innerHTML()).toContain("#e1eee9");
+  await expect
+    .poll(() => page.locator(".artboard").innerHTML())
+    .toContain("#e1eee9");
   // include a custom vector, then export and reopen a complete project
   await page
     .locator('input[type=file][accept=".svg,image/svg+xml"]')

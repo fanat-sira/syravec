@@ -92,6 +92,7 @@ export interface Generation {
 export interface Project {
   id: string;
   title: string;
+  titleEdited?: boolean;
   scene: Scene;
   generations?: Generation[];
   messages: { role: "user" | "assistant"; text: string }[];

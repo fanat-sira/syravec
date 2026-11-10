@@ -54,8 +54,9 @@ test("ctrl с колесом масштабирует вид вокруг кур
   const art = page.locator(".artboard"),
     before = (await art.boundingBox())!;
   const point = {
-    x: before.x + before.width * 0.4,
-    y: before.y + before.height * 0.4,
+    // Native wheel events use integer client coordinates.
+    x: Math.round(before.x + before.width * 0.4),
+    y: Math.round(before.y + before.height * 0.4),
   };
   const coords = () =>
     page.evaluate(({ x, y }) => {

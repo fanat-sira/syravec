@@ -1,4 +1,12 @@
 services:
+  assets:
+    build:
+      context: .
+      dockerfile: scripts/assets.Dockerfile
+    volumes:
+      - ./originals:/originals:ro
+      - assets:/output/assets
+    restart: "no"
   api:
     build:
       context: .
@@ -6,21 +14,42 @@ services:
     environment:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       AI_BASE_URL: ${AI_BASE_URL:-https://openrouter.ai/api/v1}
-      AI_MODEL: ${AI_MODEL:-openai/gpt-4.1-mini}
+      AI_MODEL: ${AI_MODEL:-openai/gpt-6-luna}
       AI_RESPONSE_FORMAT: ${AI_RESPONSE_FORMAT:-json_schema}
+      AI_GUARD_ENABLED: ${AI_GUARD_ENABLED:-true}
+      AI_GUARD_MODEL: ${AI_GUARD_MODEL:-openai/gpt-6-luna-decisions}
+      AI_GUARD_URL: ${AI_GUARD_URL:-https://openrouter.ai/api/alpha/decisions}
+      CATALOG_PATH: /app/assets/manifest.json
+    volumes:
+      - assets:/app/assets:ro
+    depends_on:
+      assets:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/v1/health"]
-      interval: 10s
+      interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
+      start_period: 10s
     restart: unless-stopped
   web:
     build:
       context: .
       dockerfile: web/Dockerfile
     ports:
-      - "127.0.0.1:${WEB_PORT:-3000}:80"
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-3000}:80"
+    volumes:
+      - assets:/usr/share/nginx/html/assets:ro
     depends_on:
+      assets:
+        condition: service_completed_successfully
       api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/api/v1/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
+volumes:
+  assets:

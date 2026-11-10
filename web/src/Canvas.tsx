@@ -35,6 +35,7 @@ export function Canvas({
   const ref = useRef<SVGSVGElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const fitAreaRef = useRef<HTMLDivElement>(null);
   const spaceRef = useRef(false);
   const [space, setSpace] = useState(false);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -177,15 +178,12 @@ export function Canvas({
   }
 
   useLayoutEffect(() => {
-    const parent = viewportRef.current;
+    const parent = fitAreaRef.current;
     if (!parent) return;
     const observer = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect;
-      const css = getComputedStyle(parent);
-      const right = parseFloat(css.getPropertyValue("--inspector-space")) || 0,
-        bottom = parseFloat(css.getPropertyValue("--dock-space")) || 0;
-      const contentWidth = Math.max(1, width - right),
-        contentHeight = Math.max(1, height - bottom);
+      const contentWidth = Math.max(1, width),
+        contentHeight = Math.max(1, height);
       const gutter = Math.min(
         24,
         Math.max(4, Math.min(contentWidth, contentHeight) * 0.04),
@@ -307,137 +305,151 @@ export function Canvas({
         if (e.button === 1) e.preventDefault();
       }}
     >
-      <div
-        ref={wrapRef}
-        className="artboard-wrap"
-        style={{
-          width: fit ? `${(fit * zoom) / 100}px` : "100%",
-          transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px))`,
-        }}
-      >
-        <svg
-          ref={ref}
-          className="artboard"
-          aria-label="холст композиции"
-          role="img"
-          viewBox={`0 0 ${w} ${h}`}
-          onPointerDown={(e) => {
-            if (e.button === 0) select(null);
-          }}
-          onPointerMove={move}
-          onPointerUp={end}
-          onPointerCancel={() => {
-            drag.current = null;
-            setDraft(null);
+      <div className="stage-fit-area" ref={fitAreaRef}>
+        <div
+          ref={wrapRef}
+          className="artboard-wrap"
+          style={{
+            width: fit ? `${(fit * zoom) / 100}px` : "100%",
+            height: fit ? `${(fit * zoom * h) / (100 * w)}px` : "auto",
+            transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px))`,
           }}
         >
-          <defs>
-            <clipPath id="canvas-clip">
-              <rect width={w} height={h} />
-            </clipPath>
-          </defs>
-          <g clipPath="url(#canvas-clip)">
-            <rect width={w} height={h} fill={p.light} />
-            {bg && <g dangerouslySetInnerHTML={{ __html: bg }} />}
-            {scene.layers
-              .filter((l) => l.visible)
-              .map((original) => {
-                const l = draft?.id === original.id ? draft : original,
-                  asset = assets.find((a) => a.id === l.assetId),
-                  raw = sources[l.assetId] ?? asset?.svg;
-                if (!asset || !raw) return null;
+          <svg
+            ref={ref}
+            className="artboard"
+            aria-label="холст композиции"
+            role="img"
+            viewBox={`0 0 ${w} ${h}`}
+            onPointerDown={(e) => {
+              if (e.button === 0) select(null);
+            }}
+            onPointerMove={move}
+            onPointerUp={end}
+            onPointerCancel={() => {
+              drag.current = null;
+              setDraft(null);
+            }}
+          >
+            <defs>
+              <clipPath id="canvas-clip">
+                <rect width={w} height={h} />
+              </clipPath>
+            </defs>
+            <g clipPath="url(#canvas-clip)">
+              <rect width={w} height={h} fill={p.light} />
+              {bg && <g dangerouslySetInnerHTML={{ __html: bg }} />}
+              {scene.layers
+                .filter((l) => l.visible)
+                .map((original) => {
+                  const l = draft?.id === original.id ? draft : original,
+                    asset = assets.find((a) => a.id === l.assetId),
+                    raw = sources[l.assetId] ?? asset?.svg;
+                  if (!asset || !raw) return null;
+                  return (
+                    <g
+                      key={l.id}
+                      opacity={l.opacity}
+                      transform={transform(scene, l, asset)}
+                      onPointerDown={(e) => start(e, l)}
+                      style={{ cursor: l.locked ? "not-allowed" : "grab" }}
+                    >
+                      <rect
+                        x={asset.viewBox[0]}
+                        y={asset.viewBox[1]}
+                        width={asset.viewBox[2]}
+                        height={asset.viewBox[3]}
+                        fill="transparent"
+                        pointerEvents="all"
+                      />
+                      <g
+                        dangerouslySetInnerHTML={{
+                          __html: markup(raw, `object-${l.id}`, p, !asset.svg),
+                        }}
+                      />
+                    </g>
+                  );
+                })}
+            </g>
+            {selectedLayer &&
+              a &&
+              selectedLayer.visible &&
+              (() => {
+                const l = selectedLayer,
+                  { w: bw, h: bh } = size(scene, l, a);
                 return (
                   <g
-                    key={l.id}
-                    opacity={l.opacity}
-                    transform={transform(scene, l, asset)}
-                    onPointerDown={(e) => start(e, l)}
-                    style={{ cursor: l.locked ? "not-allowed" : "grab" }}
+                    transform={`translate(${l.x * w} ${l.y * h}) rotate(${l.rotation})`}
+                    className="selection"
                   >
                     <rect
-                      x={asset.viewBox[0]}
-                      y={asset.viewBox[1]}
-                      width={asset.viewBox[2]}
-                      height={asset.viewBox[3]}
-                      fill="transparent"
-                      pointerEvents="all"
+                      x={-bw / 2 - 8}
+                      y={-bh / 2 - 8}
+                      width={bw + 16}
+                      height={bh + 16}
+                      fill="none"
+                      stroke="white"
+                      strokeWidth="5"
+                      vectorEffect="non-scaling-stroke"
+                      pointerEvents="none"
                     />
-                    <g
-                      dangerouslySetInnerHTML={{
-                        __html: markup(raw, `object-${l.id}`, p, !asset.svg),
-                      }}
+                    <rect
+                      x={-bw / 2 - 8}
+                      y={-bh / 2 - 8}
+                      width={bw + 16}
+                      height={bh + 16}
+                      fill="none"
+                      stroke="#6b50c7"
+                      strokeWidth="2"
+                      vectorEffect="non-scaling-stroke"
+                      strokeDasharray={l.locked ? "5 5" : undefined}
                     />
+                    {!l.locked && (
+                      <>
+                        <line
+                          x1={0}
+                          y1={-bh / 2 - 8}
+                          x2={0}
+                          y2={-bh / 2 - 45}
+                          stroke="#6b50c7"
+                          strokeWidth="2"
+                        />
+                        <circle
+                          aria-label="повернуть объект"
+                          cx={0}
+                          cy={-bh / 2 - 45}
+                          r={12}
+                          fill="white"
+                          stroke="#6b50c7"
+                          strokeWidth="2"
+                          onPointerDown={(e) => start(e, l, "rotate")}
+                          style={{ cursor: "crosshair" }}
+                        />
+                        {[-1, 1].flatMap((x) =>
+                          [-1, 1].map((y) => (
+                            <rect
+                              key={`${x}${y}`}
+                              aria-label="изменить размер"
+                              x={x * (bw / 2 + 8) - 8}
+                              y={y * (bh / 2 + 8) - 8}
+                              width={16}
+                              height={16}
+                              rx={3}
+                              fill="white"
+                              stroke="#6b50c7"
+                              strokeWidth="2"
+                              onPointerDown={(e) => start(e, l, "scale")}
+                              style={{ cursor: "nwse-resize" }}
+                            />
+                          )),
+                        )}
+                      </>
+                    )}
                   </g>
                 );
-              })}
-          </g>
-          {selectedLayer &&
-            a &&
-            selectedLayer.visible &&
-            (() => {
-              const l = selectedLayer,
-                { w: bw, h: bh } = size(scene, l, a);
-              return (
-                <g
-                  transform={`translate(${l.x * w} ${l.y * h}) rotate(${l.rotation})`}
-                  className="selection"
-                >
-                  <rect
-                    x={-bw / 2 - 8}
-                    y={-bh / 2 - 8}
-                    width={bw + 16}
-                    height={bh + 16}
-                    fill="none"
-                    stroke="#6b50c7"
-                    strokeWidth="2"
-                    vectorEffect="non-scaling-stroke"
-                    strokeDasharray={l.locked ? "5 5" : undefined}
-                  />
-                  {!l.locked && (
-                    <>
-                      <line
-                        x1={0}
-                        y1={-bh / 2 - 8}
-                        x2={0}
-                        y2={-bh / 2 - 45}
-                        stroke="#6b50c7"
-                        strokeWidth="2"
-                      />
-                      <circle
-                        aria-label="повернуть объект"
-                        cx={0}
-                        cy={-bh / 2 - 45}
-                        r={12}
-                        fill="white"
-                        stroke="#6b50c7"
-                        strokeWidth="2"
-                        onPointerDown={(e) => start(e, l, "rotate")}
-                        style={{ cursor: "crosshair" }}
-                      />
-                      {[-1, 1].flatMap((x) =>
-                        [-1, 1].map((y) => (
-                          <rect
-                            key={`${x}${y}`}
-                            aria-label="изменить размер"
-                            x={x * (bw / 2 + 8) - 8}
-                            y={y * (bh / 2 + 8) - 8}
-                            width={16}
-                            height={16}
-                            rx={3}
-                            fill="white"
-                            stroke="#6b50c7"
-                            strokeWidth="2"
-                            onPointerDown={(e) => start(e, l, "scale")}
-                            style={{ cursor: "nwse-resize" }}
-                          />
-                        )),
-                      )}
-                    </>
-                  )}
-                </g>
-              );
-            })()}
-        </svg>
+              })()}
+          </svg>
+        </div>
       </div>
     </div>
   );

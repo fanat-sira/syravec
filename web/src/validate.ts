@@ -187,7 +187,7 @@ export function readProject(
   return {
     scene,
     customAssets,
-    ...(x.title !== undefined ? { title: x.title.slice(0, 100) } : {}),
+    ...(x.title !== undefined ? { title: x.title.slice(0, 120) } : {}),
     ...(x.messages
       ? { messages: x.messages.map((m) => ({ role: m.role, text: m.text })) }
       : {}),

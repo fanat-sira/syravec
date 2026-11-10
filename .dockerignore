@@ -10,3 +10,6 @@
 **/test-results
 originals
 syravec-development-docs
+artifacts
+.deployed-tag
+release.tgz

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -83,6 +84,8 @@ type Server struct {
 	assets                  []Asset
 	manifest                json.RawMessage
 	key, model, url, format string
+	guardEnabled            bool
+	guardModel, guardURL    string
 	client                  *http.Client
 	slots                   chan struct{}
 	mu                      sync.Mutex
@@ -420,6 +423,31 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 		defer cancel()
+		if s.guardEnabled && strings.TrimSpace(input.Prompt) != "" {
+			decision, guardErr := s.checkPrompt(ctx, input)
+			if r.Context().Err() != nil {
+				return
+			}
+			if guardErr != nil {
+				if errors.Is(guardErr, context.DeadlineExceeded) {
+					fail(w, 504, "guard_timeout", "проверка запроса не ответила вовремя, композиция сохранена; попробуй ещё раз")
+				} else if upstream := (providerError{}); errors.As(guardErr, &upstream) && upstream.status == 429 {
+					fail(w, 429, "guard_rate_limited", "проверка запросов временно занята, попробуй позже")
+				} else {
+					log.Printf("guard failed: %T", guardErr)
+					fail(w, 502, "guard_error", "не удалось проверить запрос, композиция сохранена; попробуй ещё раз")
+				}
+				return
+			}
+			if decision == guardReject {
+				fail(w, 422, "prompt_rejected", "SyraVec собирает иллюстрации из SVG. опиши идею, метафору или желаемое расположение объектов")
+				return
+			}
+			if decision != guardAllow {
+				fail(w, 422, "prompt_uncertain", "сформулируй запрос как идею для иллюстрации или уточни расположение выбранных объектов")
+				return
+			}
+		}
 		p, err = s.plan(ctx, input)
 		if err != nil {
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -441,7 +469,7 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 func (s *Server) routes() http.Handler {
 	m := http.NewServeMux()
 	m.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
-		respond(w, 200, map[string]any{"status": "ok", "aiConfigured": s.key != "", "model": s.model})
+		respond(w, 200, map[string]any{"status": "ok", "aiConfigured": s.key != "", "model": s.model, "guardEnabled": s.guardEnabled, "guardModel": s.guardModel})
 	})
 	m.HandleFunc("GET /api/v1/catalog", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, s.manifest) })
 	m.HandleFunc("POST /api/v1/compositions", s.compose)
@@ -462,7 +490,13 @@ func main() {
 	if err = json.Unmarshal(raw, &c); err != nil {
 		log.Fatal(err)
 	}
-	s := &Server{assets: c.Assets, manifest: raw, key: os.Getenv("OPENROUTER_API_KEY"), model: env("AI_MODEL", "openai/gpt-4.1-mini"), url: strings.TrimRight(env("AI_BASE_URL", "https://openrouter.ai/api/v1"), "/"), format: env("AI_RESPONSE_FORMAT", "json_schema"), client: &http.Client{Timeout: 48 * time.Second}, slots: make(chan struct{}, 2)}
+	s := &Server{assets: c.Assets, manifest: raw, key: os.Getenv("OPENROUTER_API_KEY"), model: env("AI_MODEL", "openai/gpt-6-luna"), url: strings.TrimRight(env("AI_BASE_URL", "https://openrouter.ai/api/v1"), "/"), format: env("AI_RESPONSE_FORMAT", "json_schema"), client: &http.Client{Timeout: 48 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}, slots: make(chan struct{}, 2)}
+	s.guardEnabled, err = strconv.ParseBool(env("AI_GUARD_ENABLED", "true"))
+	if err != nil {
+		log.Fatal("AI_GUARD_ENABLED must be true or false")
+	}
+	s.guardModel = env("AI_GUARD_MODEL", "openai/gpt-6-luna-decisions")
+	s.guardURL = env("AI_GUARD_URL", "https://openrouter.ai/api/alpha/decisions")
 	srv := &http.Server{Addr: env("LISTEN_ADDR", "127.0.0.1:8080"), Handler: s.routes(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 55 * time.Second, IdleTimeout: 60 * time.Second}
 	log.Printf("api listening on %s; ai configured: %v", srv.Addr, s.key != "")
 	log.Fatal(srv.ListenAndServe())

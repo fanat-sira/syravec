@@ -13,7 +13,10 @@ import (
 )
 
 func main() {
-	root := "../web/public"
+	root := os.Getenv("ASSET_PUBLIC_ROOT")
+	if root == "" {
+		root = "../web/public"
+	}
 	file := filepath.Join(root, "assets/manifest.json")
 	raw, err := os.ReadFile(file)
 	if err != nil {

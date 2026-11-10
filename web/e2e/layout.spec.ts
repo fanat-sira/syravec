@@ -90,7 +90,10 @@ for (const size of sizes)
       .getByRole("textbox", { name: "описание композиции" })
       .fill("длинный запрос\n".repeat(70));
     await fixedFrame(page);
-    await page.locator(".scene-viewport").hover({ position: { x: 8, y: 100 } });
+    const viewport = (await page.locator(".scene-viewport").boundingBox())!;
+    await page
+      .locator(".scene-viewport")
+      .hover({ position: { x: 8, y: Math.min(100, viewport.height / 2) } });
     await page.mouse.wheel(0, 800);
     expect(await page.evaluate(() => scrollY)).toBe(0);
     if (size.width === 1440)

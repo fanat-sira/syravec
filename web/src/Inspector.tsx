@@ -90,7 +90,17 @@ export function Inspector(p: Props) {
   const [layersOpen, setLayersOpen] = useState(true),
     [propertiesOpen, setPropertiesOpen] = useState(true),
     [search, setSearch] = useState(""),
+    [propertyTab, setPropertyTab] = useState<"object" | "composition">(
+      "object",
+    ),
     [variants, setVariants] = useState<Record<string, string>>({});
+  useEffect(() => {
+    setPropertyTab("object");
+    if (p.selected) {
+      setLayersOpen(true);
+      setPriority(1);
+    }
+  }, [p.selected]);
   const stackRef = useRef<HTMLDivElement>(null);
   const [available, setAvailable] = useState(0);
   const [desired, setDesired] = useState<PanelSizes>([300, 220, 260]);
@@ -227,7 +237,7 @@ export function Inspector(p: Props) {
       b = body.getBoundingClientRect();
     if (r.top < b.top) body.scrollTop -= b.top - r.top;
     else if (r.bottom > b.bottom) body.scrollTop += r.bottom - b.bottom;
-  }, [p.selected, layout.open[1]]);
+  }, [p.selected, layout.open[1], layout.sizes[1], p.scene.layers]);
   const selected = p.scene.layers.find((l) => l.id === p.selected),
     selectedAsset = p.assets.find((a) => a.id === selected?.assetId);
   const groups = p.assets
@@ -286,6 +296,7 @@ export function Inspector(p: Props) {
     >
       <button
         className="icon-button inspector-close"
+        title="закрыть слои"
         aria-label="закрыть слои"
         onClick={p.close}
       >
@@ -315,12 +326,19 @@ export function Inspector(p: Props) {
             </div>
             <button
               className="icon-button"
+              title="загрузить svg"
               aria-label="загрузить svg"
               onClick={p.upload}
             >
               <Upload size={17} />
             </button>
           </div>
+          <p className="library-hint">
+            + на холст
+            {p.selectionMode
+              ? " · ✓ только для сборки"
+              : " · миниатюру можно перетащить"}
+          </p>
           <div className="asset-grid">
             {groups
               .filter((g) =>
@@ -333,7 +351,8 @@ export function Inspector(p: Props) {
                     : main;
                 return (
                   <article
-                    className="asset-card"
+                    className={`asset-card ${p.picked.includes(a.id) ? "is-picked" : ""}`}
+                    data-variant={a.variant}
                     key={main.id}
                     data-asset={main.id}
                   >
@@ -349,6 +368,9 @@ export function Inspector(p: Props) {
                         e.dataTransfer.effectAllowed = "copy";
                       }}
                     >
+                      <span className="variant-badge">
+                        {a.variant === "main" ? "основной" : "фоновый"}
+                      </span>
                       <img
                         src={thumbnail(a)}
                         alt={a.displayName}
@@ -360,6 +382,7 @@ export function Inspector(p: Props) {
                       {p.selectionMode && (
                         <button
                           className={`asset-pick ${p.picked.includes(a.id) ? "picked" : ""}`}
+                          title={`выбрать ${main.displayName} только для сборки, без добавления на холст`}
                           aria-label={`выбрать ${main.displayName} для генерации`}
                           aria-pressed={p.picked.includes(a.id)}
                           onClick={() => choose(a.id)}
@@ -389,6 +412,7 @@ export function Inspector(p: Props) {
                         )}
                       </select>
                       <button
+                        title={`добавить ${main.displayName} на холст`}
                         aria-label={`добавить ${main.displayName} на холст`}
                         disabled={p.scene.layers.length >= 40}
                         onClick={() => p.add(a)}
@@ -481,6 +505,7 @@ export function Inspector(p: Props) {
                     </button>
                     <button
                       className="icon-button"
+                      title={l.visible ? "скрыть слой" : "показать слой"}
                       aria-label={l.visible ? "скрыть слой" : "показать слой"}
                       onClick={() => patch(l.id, { visible: !l.visible })}
                     >
@@ -488,6 +513,11 @@ export function Inspector(p: Props) {
                     </button>
                     <button
                       className="icon-button"
+                      title={
+                        active
+                          ? "блокировка слоя"
+                          : `блокировка ${a?.displayName}`
+                      }
                       aria-label={
                         active
                           ? "блокировка слоя"
@@ -504,6 +534,11 @@ export function Inspector(p: Props) {
                     </button>
                     <button
                       className="icon-button layer-duplicate"
+                      title={
+                        active
+                          ? "дублировать объект"
+                          : `дублировать ${a?.displayName}`
+                      }
                       aria-label={
                         active
                           ? "дублировать объект"
@@ -517,6 +552,9 @@ export function Inspector(p: Props) {
                     <button
                       className="icon-button layer-delete"
                       disabled={l.locked}
+                      title={
+                        active ? "удалить объект" : `удалить ${a?.displayName}`
+                      }
                       aria-label={
                         active ? "удалить объект" : `удалить ${a?.displayName}`
                       }
@@ -539,7 +577,26 @@ export function Inspector(p: Props) {
           kind="properties"
         >
           <div className="properties">
-            {selected ? (
+            {selected && (
+              <div
+                className="property-tabs"
+                aria-label="свойства объекта и композиции"
+              >
+                <button
+                  aria-pressed={propertyTab === "object"}
+                  onClick={() => setPropertyTab("object")}
+                >
+                  объект
+                </button>
+                <button
+                  aria-pressed={propertyTab === "composition"}
+                  onClick={() => setPropertyTab("composition")}
+                >
+                  композиция
+                </button>
+              </div>
+            )}
+            {selected && propertyTab === "object" ? (
               <>
                 <div className="properties-name">
                   {selectedAsset?.displayName}
@@ -693,6 +750,41 @@ export function Inspector(p: Props) {
                     )}
                   </select>
                 </label>
+                <div className="palette-previews" aria-label="цвета палитр">
+                  {[
+                    ...palettes,
+                    ...(p.scene.customPalette ? [p.scene.customPalette] : []),
+                  ].map((palette) => (
+                    <button
+                      key={palette.id}
+                      title={palette.name}
+                      aria-label={`палитра ${palette.name}`}
+                      aria-pressed={p.scene.palette === palette.id}
+                      onClick={() =>
+                        p.change({
+                          ...p.scene,
+                          palette: palette.id,
+                          backgroundId:
+                            p.scene.canvas.preset === "portrait" ||
+                            palette.id === "custom"
+                              ? ""
+                              : `background-${p.scene.canvas.preset}-${palette.id}`,
+                        })
+                      }
+                    >
+                      {[
+                        palette.strong,
+                        palette.medium,
+                        palette.light,
+                        palette.highlight,
+                        palette.pink,
+                        palette.soft,
+                      ].map((color, i) => (
+                        <span key={i} style={{ background: color }} />
+                      ))}
+                    </button>
+                  ))}
+                </div>
                 <div className="palette-actions">
                   <button className="text-button" onClick={p.uploadPalette}>
                     <Upload size={15} /> загрузить палитру

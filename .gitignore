@@ -43,3 +43,7 @@ web/test-results/
 web/playwright-report/
 *.tsbuildinfo
 artifacts/
+
+# состояние развёртывания на сервере
+.deployed-tag
+/release.tgz

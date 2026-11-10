@@ -7,8 +7,7 @@ FROM alpine:3.23
 RUN apk add --no-cache ca-certificates && adduser -D -u 10001 app
 WORKDIR /app
 COPY --from=build /server /app/server
-COPY web/public/assets/manifest.json /app/manifest.json
-ENV LISTEN_ADDR=:8080 CATALOG_PATH=/app/manifest.json
+ENV LISTEN_ADDR=:8080 CATALOG_PATH=/app/assets/manifest.json
 USER app
 EXPOSE 8080
 CMD ["/app/server"]
