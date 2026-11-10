@@ -20,6 +20,12 @@ const open = () =>
     r.onsuccess = () => resolve(r.result);
     r.onerror = () => reject(r.error);
   });
+let pendingWrite: Promise<void> = Promise.resolve();
+let storageFailure: Error | null = null;
+export const flushStorage = async () => {
+  await pendingWrite;
+  if (storageFailure) throw storageFailure;
+};
 const storage: StateStorage = {
   getItem: async (k) => {
     const db = await open();
@@ -31,26 +37,31 @@ const storage: StateStorage = {
       t.oncomplete = () => db.close();
     });
   },
-  setItem: async (k, v) => {
-    try {
-      const db = await open();
-      await new Promise<void>((resolve, reject) => {
-        const t = db.transaction("state", "readwrite");
-        t.objectStore("state").put(v, k);
-        t.oncomplete = () => {
-          db.close();
-          resolve();
-        };
-        t.onabort = () => {
-          db.close();
-          reject(t.error);
-        };
-        t.onerror = () => {};
-      });
-    } catch {
-      window.dispatchEvent(new Event("syravec-storage-error"));
-    }
-  },
+  setItem: (k, v) =>
+    (pendingWrite = pendingWrite.then(async () => {
+      try {
+        const db = await open();
+        await new Promise<void>((resolve, reject) => {
+          const t = db.transaction("state", "readwrite");
+          t.objectStore("state").put(v, k);
+          t.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          t.onabort = () => {
+            db.close();
+            reject(t.error);
+          };
+          t.onerror = () => {};
+        });
+        storageFailure = null;
+      } catch {
+        storageFailure = new Error(
+          "не удалось сохранить запрос в браузере; сборка не запущена",
+        );
+        window.dispatchEvent(new Event("syravec-storage-error"));
+      }
+    })),
   removeItem: async (k) => {
     const db = await open();
     const t = db.transaction("state", "readwrite");
@@ -59,6 +70,7 @@ const storage: StateStorage = {
   },
 };
 interface State {
+  updateProject: (id: string, patch: Partial<Project>) => void;
   projects: Project[];
   current: string | null;
   customAssets: Asset[];
@@ -91,6 +103,12 @@ interface State {
 export const useStore = create<State>()(
   persist<State, [], [], Pick<State, "projects" | "current" | "customAssets">>(
     (set, get) => ({
+      updateProject: (id, patch) =>
+        set((s) => ({
+          projects: s.projects.map((p) =>
+            p.id === id ? { ...p, ...patch } : p,
+          ),
+        })),
       projects: [],
       current: null,
       customAssets: [],

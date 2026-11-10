@@ -2607,3 +2607,23 @@ button:active:not(:disabled) {
 .sidebar-credits a > svg:last-child {
   margin-left: auto;
 }
+
+/* Keep one shared composer surface, without an inset textarea focus frame. */
+.composer textarea,
+.composer textarea:focus,
+.composer textarea:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border: 0;
+  border-radius: 0;
+}
+.composer .composer-input textarea {
+  width: calc(100% - 16px);
+}
+.composer-input {
+  align-self: center;
+}
+/* Artwork stays clipped by canvas-clip; selection tools can extend past the artboard. */
+.artboard-wrap > .artboard {
+  overflow: visible;
+}

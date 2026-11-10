@@ -100,7 +100,18 @@ export interface Generation {
   scene?: Scene;
   error?: string;
 }
+export interface PendingComposition {
+  id: string;
+  prompt: string;
+  fromLayers: boolean;
+  request: string;
+  snapshot: Scene;
+  startedAt: number;
+}
 export interface Project {
+  pending?: PendingComposition;
+  composerDraft?: string;
+  composerError?: string;
   id: string;
   title: string;
   titleEdited?: boolean;

@@ -97,6 +97,7 @@ type Plan struct {
 	Layout  string `json:"layout"`
 }
 type Server struct {
+	jobs                    compositionJobs
 	assets                  []Asset
 	manifest                json.RawMessage
 	key, model, url, format string
@@ -450,7 +451,15 @@ func (s *Server) routes() http.Handler {
 		respond(w, 200, map[string]any{"status": "ok", "aiConfigured": s.key != "", "model": s.model, "guardEnabled": false})
 	})
 	m.HandleFunc("GET /api/v1/catalog", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, s.manifest) })
-	m.HandleFunc("POST /api/v1/compositions", s.compose)
+	m.HandleFunc("POST /api/v1/compositions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Composition-Job") != "" {
+			s.startJob(w, r)
+		} else {
+			s.compose(w, r)
+		}
+	})
+	m.HandleFunc("GET /api/v1/compositions/{id}", s.readJob)
+	m.HandleFunc("DELETE /api/v1/compositions/{id}", s.readJob)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		m.ServeHTTP(w, r)

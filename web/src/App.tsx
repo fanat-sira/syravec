@@ -23,7 +23,9 @@ import {
   Code2,
   UserRound,
 } from "lucide-react";
-import { useStore } from "./store";
+import { useStore, flushStorage } from "./store";
+import { compositionRequest } from "./compositionRequest";
+import type { PendingComposition } from "./model";
 import {
   emptyScene,
   layer,
@@ -71,8 +73,6 @@ export default function App() {
     [loading, setLoading] = useState(true),
     [loadError, setLoadError] = useState("");
   const [prompt, setPrompt] = useState(""),
-    [busy, setBusy] = useState(false),
-    [recomposing, setRecomposing] = useState(false),
     [aiConfigured, setAiConfigured] = useState<boolean | null>(null),
     [notice, setNotice] = useState(""),
     [composerError, setComposerError] = useState(""),
@@ -91,19 +91,32 @@ export default function App() {
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const shimmerRef = useRef<HTMLDivElement>(null);
   const inEditor = !!project;
+  const busy = !!project?.pending;
+  const recomposing = !!project?.pending?.fromLayers;
   const activeProject = useRef(st.current);
+  const knownProjects = useRef(new Set(st.projects.map((p) => p.id)));
   useEffect(() => {
     if (activeProject.current === st.current) return;
     const previous = activeProject.current;
+    const created = st.current && !knownProjects.current.has(st.current);
+    knownProjects.current = new Set(st.projects.map((p) => p.id));
     activeProject.current = st.current;
     // Creating the first scene by adding an asset keeps the current Composer selection.
-    if (!previous && st.current) return;
+    if (!previous && created) return;
     resetComposer();
   }, [st.current]);
+  useEffect(() => {
+    if (st.hydrated) {
+      setPrompt(project?.pending?.prompt ?? project?.composerDraft ?? "");
+      setComposerError(project?.composerError ?? "");
+    }
+  }, [st.hydrated]);
   function resetComposer() {
-    controller.current?.abort();
-    setPrompt("");
-    setComposerError("");
+    const next = useStore
+      .getState()
+      .projects.find((p) => p.id === useStore.getState().current);
+    setPrompt(next?.pending?.prompt ?? next?.composerDraft ?? "");
+    setComposerError(next?.composerError ?? "");
     setZoomOpen(false);
     setZoom(100);
     setViewReset((v) => v + 1);
@@ -171,7 +184,7 @@ export default function App() {
     if (shimmerRef.current && promptRef.current)
       shimmerRef.current.scrollTop = promptRef.current.scrollTop;
   }, [busy, prompt]);
-  const controller = useRef<AbortController | null>(null),
+  const controllers = useRef(new Map<string, AbortController>()),
     fileRef = useRef<HTMLInputElement>(null),
     paletteRef = useRef<HTMLInputElement>(null),
     seed = useRef(Math.floor(Math.random() * 1_000_000));
@@ -238,7 +251,7 @@ export default function App() {
       .catch(() => {});
     return () => {
       cancelled = true;
-      controller.current?.abort();
+      for (const ac of controllers.current.values()) ac.abort();
     };
   }, []);
   useEffect(() => {
@@ -353,57 +366,68 @@ export default function App() {
     }
     if (!fromLayers) st.message("user", text.trim());
     const before = useStore.getState();
-    const revision = before.revision,
-      current = before.current,
-      snapshot = before.projects.find((p) => p.id === current)!.scene;
-    activeProject.current = current;
+    const current = before.current!;
+    const snapshot = before.projects.find((p) => p.id === current)!.scene;
+    const pending: PendingComposition = {
+      id: uid(),
+      prompt: fromLayers ? prompt : text.trim(),
+      fromLayers,
+      snapshot,
+      startedAt: Date.now(),
+      request: JSON.stringify({
+        mode: fromLayers ? "selection" : "auto",
+        illustrationSize: snapshot.illustrationSize,
+        prompt: fromLayers ? "" : text.trim(),
+        assetIds: fromLayers ? snapshot.layers.map((l) => l.assetId) : [],
+        customAssets: fromLayers
+          ? [...new Set(snapshot.layers.map((l) => l.assetId))]
+              .filter((id) => !catalog.some((a) => a.id === id))
+              .map((id) => {
+                const asset = assets.find((a) => a.id === id)!;
+                return {
+                  id,
+                  displayName: asset.displayName.slice(0, 200),
+                  viewBox: asset.viewBox,
+                  illustrationSize: asset.nativeSize ?? "large",
+                };
+              })
+          : undefined,
+        palette: snapshot.palette,
+        paletteColors: Object.fromEntries(
+          ["strong", "medium", "light", "highlight", "pink", "soft"].map(
+            (key) => [
+              key,
+              paletteFor(snapshot)[key as keyof ReturnType<typeof paletteFor>],
+            ],
+          ),
+        ),
+        canvasPreset: snapshot.canvas.preset,
+        seed: seed.current++,
+      }),
+    };
     setComposerError("");
     setNotice("");
-    setBusy(true);
-    setRecomposing(fromLayers);
-    const ac = new AbortController();
-    controller.current = ac;
+    st.updateProject(current, {
+      pending,
+      composerDraft: pending.prompt,
+      composerError: "",
+    });
+  }
+  async function runPending(
+    current: string,
+    pending: PendingComposition,
+    ac: AbortController,
+  ) {
+    const { snapshot, fromLayers } = pending;
+    const text = pending.prompt;
     try {
-      const r = await fetch("/api/v1/compositions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: ac.signal,
-        body: JSON.stringify({
-          mode: fromLayers ? "selection" : "auto",
-          illustrationSize: snapshot.illustrationSize,
-          prompt: fromLayers ? "" : text.trim(),
-          assetIds: fromLayers ? snapshot.layers.map((l) => l.assetId) : [],
-          customAssets: fromLayers
-            ? [...new Set(snapshot.layers.map((l) => l.assetId))]
-                .filter((id) => !catalog.some((a) => a.id === id))
-                .map((id) => {
-                  const asset = assets.find((a) => a.id === id)!;
-                  return {
-                    id,
-                    displayName: asset.displayName.slice(0, 200),
-                    viewBox: asset.viewBox,
-                    illustrationSize: asset.nativeSize ?? "large",
-                  };
-                })
-            : undefined,
-          palette: snapshot.palette,
-          paletteColors: Object.fromEntries(
-            ["strong", "medium", "light", "highlight", "pink", "soft"].map(
-              (key) => [
-                key,
-                paletteFor(snapshot)[
-                  key as keyof ReturnType<typeof paletteFor>
-                ],
-              ],
-            ),
-          ),
-          canvasPreset: snapshot.canvas.preset,
-          seed: seed.current++,
-        }),
-      });
-      const data = await r.json();
-      if (!r.ok)
-        throw Error(data.error?.message || "не удалось собрать композицию");
+      await flushStorage();
+      const data = await compositionRequest(pending, ac.signal);
+      if (
+        useStore.getState().projects.find((p) => p.id === current)?.pending
+          ?.id !== pending.id
+      )
+        return;
       const { validateProject } = await import("./validate");
       let result = validateProject(
         { scene: { ...data.scene, customPalette: snapshot.customPalette } },
@@ -445,21 +469,31 @@ export default function App() {
         result = { ...snapshot, layers };
       }
       const now = useStore.getState();
-      if (now.revision !== revision || now.current !== current) {
-        if (now.current === current)
-          setComposerError(
-            "композиция изменилась во время сборки; повтори запрос, чтобы применить новую компоновку",
-          );
+      const target = now.projects.find((p) => p.id === current);
+      if (
+        !target ||
+        JSON.stringify(target.scene) !== JSON.stringify(snapshot)
+      ) {
+        const message =
+          "композиция изменилась во время сборки; повтори запрос, чтобы применить новую компоновку";
+        now.updateProject(current, { composerError: message });
+        if (now.current === current) setComposerError(message);
         return;
       }
-      st.setScene(result);
-      if (!fromLayers) {
+      if (now.current === current) st.setScene(result);
+      else now.updateProject(current, { scene: result, updatedAt: Date.now() });
+      now.updateProject(current, {
+        composerDraft: fromLayers ? pending.prompt : "",
+        composerError: "",
+      });
+      if (!fromLayers && now.current === current) {
         st.select(null);
         setPrompt((draft) => (draft.trim() === text.trim() ? "" : draft));
       }
       const warnings = data.generation.warnings?.filter(
         (w: string) => w !== "шаблонная раскладка, без ai",
       );
+      if (useStore.getState().current !== current) return;
       if (fromLayers) setAiConfigured(data.generation.source === "llm");
       if (fromLayers && data.generation.source === "fallback")
         setNotice(
@@ -470,16 +504,48 @@ export default function App() {
         );
       else if (warnings?.length) setNotice(warnings.join(" · "));
     } catch (e) {
-      if (!ac.signal.aborted && useStore.getState().current === current)
-        setComposerError(
-          e instanceof Error ? e.message : "ошибка соединения с сервером",
-        );
+      if (!ac.signal.aborted) {
+        const error =
+          e instanceof Error ? e.message : "ошибка соединения с сервером";
+        st.updateProject(current, { composerError: error });
+        if (useStore.getState().current === current) setComposerError(error);
+      }
     } finally {
-      setBusy(false);
-      setRecomposing(false);
-      controller.current = null;
+      controllers.current.delete(pending.id);
+      const target = useStore.getState().projects.find((p) => p.id === current);
+      if (!ac.signal.aborted && target?.pending?.id === pending.id) {
+        st.updateProject(current, { pending: undefined });
+        // Release the server result only after the browser has durably saved it.
+        try {
+          await flushStorage();
+          await fetch(`/api/v1/compositions/${pending.id}`, {
+            method: "DELETE",
+          });
+        } catch {
+          /* Keep the server copy available if saving or acknowledgement fails. */
+        }
+      }
     }
   }
+  function cancelGeneration() {
+    if (!project?.pending) return;
+    const id = project.pending.id;
+    controllers.current.get(id)?.abort();
+    st.updateProject(project.id, { pending: undefined });
+    void fetch(`/api/v1/compositions/${id}`, { method: "DELETE" }).catch(
+      () => {},
+    );
+  }
+  useEffect(() => {
+    if (loading || !st.hydrated || loadError) return;
+    for (const p of st.projects) {
+      if (!p.pending || controllers.current.has(p.pending.id)) continue;
+      const ac = new AbortController();
+      controllers.current.set(p.pending.id, ac);
+      if (p.id === st.current) setPrompt(p.pending.prompt);
+      void runPending(p.id, p.pending, ac);
+    }
+  }, [st.projects, st.hydrated, loading, loadError]);
   function example(i: number) {
     const e = examples[i];
     st.newProject();
@@ -907,7 +973,7 @@ export default function App() {
               recompose={() => void generate("", true)}
               composing={busy}
               recomposing={recomposing}
-              cancelRecompose={() => controller.current?.abort()}
+              cancelRecompose={cancelGeneration}
               aiConfigured={aiConfigured}
             />
           </div>
@@ -1010,7 +1076,13 @@ export default function App() {
                 if (shimmerRef.current)
                   shimmerRef.current.scrollTop = e.currentTarget.scrollTop;
               }}
-              onChange={(e) => setPrompt(e.target.value)}
+              onChange={(e) => {
+                setPrompt(e.target.value);
+                if (project)
+                  st.updateProject(project.id, {
+                    composerDraft: e.target.value,
+                  });
+              }}
               onKeyDown={(e) => {
                 if (busy) return;
                 if (
@@ -1042,9 +1114,7 @@ export default function App() {
             }
             aria-label={busy ? "остановить сборку" : "собрать композицию"}
             disabled={!ready || (!busy && !prompt.trim())}
-            onClick={() =>
-              busy ? controller.current?.abort() : void generate()
-            }
+            onClick={() => (busy ? cancelGeneration() : void generate())}
           >
             {busy ? (
               <Square size={14} fill="currentColor" strokeWidth={0} />

@@ -51,3 +51,11 @@ The container nginx resolves client addresses only through the configured truste
 ## manual rotation only
 
 Generation and template layouts always create layers with rotation 0. The model prompt forbids rotation and the structured schema restricts it to zero. The server discards any proposed angle before layout refinement; the client also discards angles in new generation responses. Recomposition retains each original instance’s manually edited rotation, including repeated asset IDs. Editor controls, undo/redo, saved projects and SVG export retain manual rotations.
+
+## resumable composition requests
+
+The browser persists the draft, request ID, payload and original scene with its project in IndexedDB before submitting. `POST /api/v1/compositions` with `X-Composition-Job` starts an idempotent background job; the unchanged synchronous endpoint remains available without this header. `GET /api/v1/compositions/{id}` returns 202 while running and the original response when complete. `DELETE` explicitly cancels a pending job or acknowledges a locally saved result. Switching projects or disconnecting a browser does not cancel it, and reconnecting with the same ID never issues a second provider request. Each result applies only to its originating project and only if that scene still matches the saved snapshot.
+
+Jobs use the existing Go process, without a database or worker service. At most 1024 jobs are retained; unread results stay until the browser acknowledges durable local persistence, acknowledged/cancelled tombstones expire after 30 minutes; IDs are unguessable bearer capabilities and there is no listing endpoint. Process restarts discard them. An unavailable result reports an error while preserving the user's prompt. Provider timeout, concurrency limits, IP quotas and rotation restrictions still apply. An explicit stop cancels polling and the provider request; a page reload only stops polling and resumes the same job after hydration.
+
+Artwork remains inside its SVG clip path; selection controls can render beyond the artboard, with overflow clipped by the outer editor viewport. Composer text and loading text share the same metrics and have no inner focus outline.
