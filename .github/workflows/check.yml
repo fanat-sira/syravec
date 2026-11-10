@@ -69,6 +69,8 @@ jobs:
           docker compose build
       - name: Missing private archive blocks startup with instructions
         run: |
+          # Create bind source as the runner user before Docker can create it as root.
+          mkdir -p originals
           if docker compose run --rm assets > /tmp/assets-missing.log 2>&1; then
             echo 'asset preparation must fail without originals'; exit 1
           fi
