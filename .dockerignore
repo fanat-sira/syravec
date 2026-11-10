@@ -13,3 +13,6 @@ syravec-development-docs
 artifacts
 .deployed-tag
 release.tgz
+
+# локальное состояние рабочего инструмента
+.ori/

@@ -156,6 +156,9 @@ func TestPaidProviderFailureNeverBecomesTemplate(t *testing.T) {
 	s.key = "test-only"
 	r := req()
 	r.Planner = "llm"
+	r.Mode = "concept"
+	r.Prompt = "идея развития"
+	r.AssetIDs = nil
 	data, _ := json.Marshal(r)
 	w := call(s, string(data))
 	if w.Code != 429 || calls != 1 {
@@ -189,6 +192,9 @@ func TestConfiguredKeyMakesLLMTheDefault(t *testing.T) {
 	s.url, s.key, s.format = upstream.URL, "test-only", "json_schema"
 	r := req()
 	r.Planner = ""
+	r.Mode = "concept"
+	r.Prompt = "идея обучения"
+	r.AssetIDs = nil
 	r.Palette = "custom"
 	r.PaletteColors = map[string]string{"strong": "#123456", "medium": "#334455", "light": "#ddeeff", "highlight": "#ffeedd", "pink": "#ffaabb", "soft": "#ffeef0"}
 	data, _ := json.Marshal(r)

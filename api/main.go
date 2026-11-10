@@ -93,6 +93,7 @@ type Server struct {
 	ipCalls                 map[string][]time.Time
 	usagePath               string
 	trustProxy              bool
+	aiLimits                aiQuotaLimits
 }
 
 func env(k, d string) string {
@@ -450,28 +451,26 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 			case s.slots <- struct{}{}:
 				defer func() { <-s.slots }()
 			default:
+				w.Header().Set("Retry-After", "1")
 				fail(w, 429, "concurrency_limit", "уже собираются две AI-композиции, попробуй чуть позже")
-				return
-			}
-			limit, reserveErr := s.reserveAI(s.clientIP(r))
-			if reserveErr != nil {
-				log.Printf("AI quota storage failed: %T", reserveErr)
-				fail(w, 503, "quota_unavailable", "не удалось проверить лимит AI-генераций, попробуй позже")
-				return
-			}
-			if limit != "" {
-				message := "достигнут лимит сервиса: 100 AI-генераций за 24 часа, попробуй позже"
-				if limit == "ip_daily_limit" {
-					message = "достигнут лимит: 20 AI-генераций с одного IP за 24 часа, попробуй позже"
-				}
-				fail(w, 429, limit, message)
 				return
 			}
 			ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 			defer cancel()
+			ctx = context.WithValue(ctx, mainModelIPKey{}, s.clientIP(r))
 			p, err = s.plan(ctx, input)
 			if err != nil {
 				if r.Context().Err() != nil {
+					return
+				}
+				var quota aiQuotaError
+				if errors.As(err, &quota) {
+					if quota.cause != nil {
+						log.Printf("AI quota storage failed: %T", quota.cause)
+						fail(w, 503, "quota_unavailable", "не удалось проверить лимит AI-генераций, попробуй позже")
+					} else {
+						respondQuota(w, quota)
+					}
 					return
 				}
 				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -516,6 +515,9 @@ func main() {
 		log.Fatal(err)
 	}
 	s := &Server{assets: c.Assets, manifest: raw, key: os.Getenv("OPENROUTER_API_KEY"), model: env("AI_MODEL", "openai/gpt-6-luna"), url: strings.TrimRight(env("AI_BASE_URL", "https://openrouter.ai/api/v1"), "/"), format: env("AI_RESPONSE_FORMAT", "json_schema"), client: &http.Client{Timeout: 48 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}, slots: make(chan struct{}, 2)}
+	if err = s.configureQuotas(); err != nil {
+		log.Fatal(err)
+	}
 	s.usagePath = os.Getenv("AI_USAGE_PATH")
 	s.trustProxy, err = strconv.ParseBool(env("AI_TRUST_PROXY", "false"))
 	if err != nil {

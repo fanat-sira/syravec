@@ -152,7 +152,7 @@ func TestGuardSkipsTemplatesAndTextlessSelection(t *testing.T) {
 		planner, prompt string
 		enabled         bool
 		wantCalls       int
-	}{{"template", "напиши код", true, 0}, {"llm", " \n ", true, 1}, {"llm", "описание", false, 1}} {
+	}{{"template", "напиши код", true, 0}, {"llm", " \n ", true, 0}, {"llm", "описание", false, 0}} {
 		s := guardedFixture()
 		s.guardEnabled = tc.enabled
 		calls := 0
@@ -169,31 +169,40 @@ func TestGuardSkipsTemplatesAndTextlessSelection(t *testing.T) {
 		}
 	}
 }
-func TestInputValidationAndLimitsRunBeforeGuard(t *testing.T) {
+func TestValidationPrecedesGuardButGenerationLimitsDoNot(t *testing.T) {
 	s := guardedFixture()
 	calls := 0
-	s.client.Transport = guardTransport(func(r *http.Request) (*http.Response, error) { calls++; return guardResponse(r, 500, ""), nil })
+	s.client.Transport = guardTransport(func(r *http.Request) (*http.Response, error) {
+		calls++
+		if r.URL.Path != "/api/alpha/decisions" {
+			t.Error("limited request reached main model")
+		}
+		return guardResponse(r, 200, guardAnswers(.99, .01)), nil
+	})
 	for _, prompt := range []string{"", strings.Repeat("я", 2001)} {
 		if code, _ := guardedCall(s, "concept", prompt, "llm"); code != 400 {
 			t.Error("invalid input accepted")
 		}
 	}
-	s.slots <- struct{}{}
-	s.slots <- struct{}{}
-	if code, _ := guardedCall(s, "concept", "книга", "llm"); code != 429 {
-		t.Error("busy guard was called")
+	if calls != 0 {
+		t.Fatal("invalid input reached Guard")
 	}
-	<-s.slots
-	<-s.slots
-	s.calls = make([]time.Time, 10)
+	s.calls = make([]time.Time, aiDailyTotal)
 	for i := range s.calls {
 		s.calls[i] = time.Now()
 	}
+	s.slots <- struct{}{}
+	s.slots <- struct{}{}
 	if code, _ := guardedCall(s, "concept", "книга", "llm"); code != 429 {
-		t.Error("rate limit not enforced")
+		t.Error("concurrency limit not enforced")
 	}
-	if calls != 0 {
-		t.Fatal("invalid input reached paid guard")
+	<-s.slots
+	<-s.slots
+	if code, body := guardedCall(s, "concept", "книга", "llm"); code != 429 || !strings.Contains(body, "service_daily_limit") {
+		t.Errorf("daily limit not enforced: %d %s", code, body)
+	}
+	if calls != 2 {
+		t.Fatal("Guard must run independently of main model quotas and slots")
 	}
 }
 func TestGuardFailuresNeverGenerateRetryOrLeak(t *testing.T) {

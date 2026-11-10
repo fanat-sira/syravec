@@ -53,7 +53,8 @@ func (s *Server) plan(ctx context.Context, r Request) (Plan, error) {
 		}
 		last = err
 		var upstream providerError
-		if errors.As(err, &upstream) || ctx.Err() != nil {
+		var quota aiQuotaError
+		if errors.As(err, &quota) || errors.As(err, &upstream) || ctx.Err() != nil {
 			return Plan{}, err
 		}
 	}
@@ -108,6 +109,14 @@ Catalog: ` + string(metadata)
 	req.Header.Set("Authorization", "Bearer "+s.key)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Title", "SyraVec")
+	if err := ctx.Err(); err != nil {
+		return Plan{}, err
+	}
+	if ip, limited := ctx.Value(mainModelIPKey{}).(string); limited {
+		if err := s.reserveAI(ctx, ip); err != nil {
+			return Plan{}, err
+		}
+	}
 	response, err := s.client.Do(req)
 	if err != nil {
 		return Plan{}, providerError{status: 0}

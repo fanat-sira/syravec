@@ -19,6 +19,9 @@ services:
       AI_GUARD_ENABLED: ${AI_GUARD_ENABLED:-true}
       AI_GUARD_MODEL: ${AI_GUARD_MODEL:-openai/gpt-6-luna-decisions}
       AI_GUARD_URL: ${AI_GUARD_URL:-https://openrouter.ai/api/alpha/decisions}
+      AI_IP_HOURLY_LIMIT: ${AI_IP_HOURLY_LIMIT:-5}
+      AI_IP_DAILY_LIMIT: ${AI_IP_DAILY_LIMIT:-20}
+      AI_SERVICE_DAILY_LIMIT: ${AI_SERVICE_DAILY_LIMIT:-150}
       AI_USAGE_PATH: /app/data/ai-usage.json
       AI_TRUST_PROXY: "true"
       CATALOG_PATH: /app/assets/manifest.json

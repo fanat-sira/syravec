@@ -33,7 +33,7 @@ func routingAnswers(s *Server, scenario string, selected []int) map[string]any {
 	}
 	return body.Answers
 }
-func TestAutoRoutingOneClassifierThenExactPlanner(t *testing.T) {
+func TestAutoRoutingConceptCallsModelAndSelectionUsesServer(t *testing.T) {
 	// Mock scores test our routing contract, not model semantic accuracy.
 	for _, mode := range []string{"concept", "selection"} {
 		t.Run(mode, func(t *testing.T) {
@@ -80,7 +80,11 @@ func TestAutoRoutingOneClassifierThenExactPlanner(t *testing.T) {
 			input.Prompt = "свободный запрос"
 			raw, _ := json.Marshal(input)
 			response := call(s, string(raw))
-			if response.Code != 200 || len(calls) != 2 || calls[0] != "guard.test" {
+			wantCalls := 2
+			if mode == "selection" {
+				wantCalls = 1
+			}
+			if response.Code != 200 || len(calls) != wantCalls || calls[0] != "guard.test" {
 				t.Fatalf("%d %s calls=%v", response.Code, response.Body.String(), calls)
 			}
 			if mode == "selection" {
@@ -88,6 +92,9 @@ func TestAutoRoutingOneClassifierThenExactPlanner(t *testing.T) {
 					Scene Scene `json:"scene"`
 				}
 				_ = json.Unmarshal(response.Body.Bytes(), &result)
+				if len(s.calls) != 0 {
+					t.Fatal("server arrangement consumed main-model quota")
+				}
 				if len(result.Scene.Layers) != 2 {
 					t.Fatal("selection lost or gained objects")
 				}
