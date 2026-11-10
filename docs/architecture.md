@@ -14,7 +14,7 @@ Scene version 2 contains its illustration size, canvas format, palette, backgrou
 
 `POST /api/v1/compositions` accepts:
 
-- `auto`: exact catalog-name lists use the local layout; other text becomes a concept request.
+- `auto`: recognizable catalog-name lists use the local layout; other text becomes a concept request. Lists normalize case, whitespace, punctuation, supported Russian inflections and unambiguous single-character typos. Repeated names and explicit quantities are preserved, up to 40 instances. A list containing any unknown or ambiguous name is passed intact to the model, never partially consumed.
 - `concept`: the model chooses suitable catalog objects and their arrangement.
 - `selection`: the model arranges exactly the supplied `assetIds`, including repeated instances.
 

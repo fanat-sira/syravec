@@ -72,7 +72,7 @@ sudo docker compose down
 3. To rearrange the current objects, use **«перекомпоновать объекты»** at the bottom of Layers. Repeat for another layout; one Undo restores the previous scene.
 4. Change the illustration size, format, or palette in Properties, then use **«экспорт svg»** above the canvas.
 
-The layer action rearranges the current canvas, including a single object, repeated copies, uploaded SVGs, and locked layers. Copies keep separate IDs. Explicit rearrangement can move locked layers; their manual lock flags remain set. A literal list of catalog names in Composer uses the local template; other text goes directly to the main model.
+The layer action rearranges the current canvas, including a single object, repeated copies, uploaded SVGs, and locked layers. Copies keep separate IDs. Explicit rearrangement can move locked layers; their manual lock flags remain set. A recognizable list of catalog names in Composer uses the local template, preserving repetitions and quantities such as `2 монеты, 3 ручки и лампа`. Case, punctuation, supported word forms and unambiguous minor typos are normalized. Descriptions and lists containing unknown names go intact to the main model.
 
 Projects and uploaded SVGs stay in the current browser's IndexedDB. Clearing site data removes them. SVG uploads support static vector content without scripts, raster images, or external resources; custom palette uploads use the example JSON available in Properties.
 

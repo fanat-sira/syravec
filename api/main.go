@@ -380,13 +380,19 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 			input.Planner = "template"
 		}
 	}
-	// Literal catalog-name lists can be arranged locally. Every other brief,
+	// Recognizable catalog-name lists can be arranged locally. Every other brief,
 	// including figurative uses of catalog objects, goes straight to the planner.
 	if input.Mode == "auto" {
 		input = s.templateRoute(input)
+		if err := composer.validate(input); err != nil {
+			fail(w, 400, "invalid_request", "проверь список объектов: "+err.Error())
+			return
+		}
 		// Text-only literal lists keep the free local path; explicit selection is AI-capable.
 		if input.Mode == "selection" {
 			input.Planner = "template"
+		} else {
+			input.Planner = "llm"
 		}
 	}
 	var p Plan
