@@ -20,6 +20,8 @@ import {
   Pencil,
   Check,
   Square,
+  Code2,
+  UserRound,
 } from "lucide-react";
 import { useStore } from "./store";
 import {
@@ -668,6 +670,26 @@ export default function App() {
                   </button>
                 </div>
               ))}
+          </nav>
+          <nav className="sidebar-credits" aria-label="о проекте">
+            <a
+              href="https://github.com/fanat-sira/syravec"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Code2 size={16} aria-hidden="true" />
+              <span>исходный код</span>
+              <ArrowUpRight size={14} aria-hidden="true" />
+            </a>
+            <a
+              href="https://fanat-sira.art/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <UserRound size={16} aria-hidden="true" />
+              <span>о авторе</span>
+              <ArrowUpRight size={14} aria-hidden="true" />
+            </a>
           </nav>
         </aside>
       )}

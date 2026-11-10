@@ -2578,3 +2578,32 @@ button:active:not(:disabled) {
   align-self: flex-end;
   margin-bottom: 1px;
 }
+
+.sidebar-credits {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 4px;
+  padding-top: 12px;
+  border-top: 1px solid #ded5e9;
+}
+.sidebar-credits a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.sidebar-credits a:hover {
+  background: #e5dcf1;
+  color: var(--ink);
+}
+.sidebar-credits a > svg:last-child {
+  margin-left: auto;
+}
