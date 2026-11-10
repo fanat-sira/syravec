@@ -41,7 +41,6 @@ interface Props {
   open: boolean;
   close: () => void;
   libraryExpanded: boolean;
-  libraryRequest: number;
   setLibraryExpanded: (v: boolean) => void;
 }
 function Section({
@@ -101,9 +100,7 @@ export function Inspector(p: Props) {
   const [available, setAvailable] = useState(0);
   const [desired, setDesired] = useState<PanelSizes>([300, 220, 260]);
   const [priority, setPriority] = useState(2);
-  useEffect(() => {
-    if (p.libraryRequest) setPriority(0);
-  }, [p.libraryRequest]);
+
   const [resizing, setResizing] = useState(false);
   const initialized = useRef(false);
   const resizeGesture = useRef<{

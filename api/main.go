@@ -394,97 +394,62 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 			input.Planner = "template"
 		}
 	}
+	// Literal catalog-name lists can be arranged locally. Every other brief,
+	// including figurative uses of catalog objects, goes straight to the planner.
+	if input.Mode == "auto" {
+		input = s.templateRoute(input)
+	}
 	var p Plan
 	source := "fallback"
 	warnings := []string{}
-	if input.Planner == "template" {
-		if input.Mode == "auto" {
-			input = s.templateRoute(input)
-		}
+	if input.Planner == "template" || input.Mode == "selection" {
 		p = s.template(input)
 		warnings = append(warnings, "шаблонная раскладка, без ai")
 	} else {
 		if s.key == "" {
-			fail(w, 503, "not_configured", "ai пока не подключен, попробуй шаблонную сборку")
+			fail(w, 503, "not_configured", "ai пока не подключен")
 			return
 		}
-		if input.Mode == "auto" || s.guardEnabled && strings.TrimSpace(input.Prompt) != "" {
-			var decision guardDecision
-			var guardErr error
-			if input.Mode == "auto" {
-				input, decision, guardErr = s.routePrompt(r.Context(), input)
+		if r.Context().Err() != nil {
+			return
+		}
+		select {
+		case s.slots <- struct{}{}:
+			defer func() { <-s.slots }()
+		default:
+			w.Header().Set("Retry-After", "1")
+			fail(w, 429, "concurrency_limit", "уже собираются две AI-композиции, попробуй чуть позже")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+		defer cancel()
+		ctx = context.WithValue(ctx, mainModelIPKey{}, s.clientIP(r))
+		p, err = s.plan(ctx, input)
+		if err != nil {
+			if r.Context().Err() != nil {
+				return
+			}
+			var quota aiQuotaError
+			if errors.As(err, &quota) {
+				if quota.cause != nil {
+					log.Printf("AI quota storage failed: %T", quota.cause)
+					fail(w, 503, "quota_unavailable", "не удалось проверить лимит AI-генераций, попробуй позже")
+				} else {
+					respondQuota(w, quota)
+				}
+				return
+			}
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				fail(w, 504, "provider_timeout", "модель не ответила вовремя, композиция сохранена")
+			} else if upstream := (providerError{}); errors.As(err, &upstream) && upstream.status == 429 {
+				fail(w, 429, "rate_limited", "лимит провайдера исчерпан, попробуй позже")
 			} else {
-				decision, guardErr = s.checkPrompt(r.Context(), input)
+				log.Printf("planner failed: %T", err)
+				fail(w, 502, "provider_error", "не удалось получить корректную композицию, попробуй еще раз")
 			}
-			if r.Context().Err() != nil {
-				return
-			}
-			if guardErr != nil {
-				if errors.Is(guardErr, context.DeadlineExceeded) {
-					fail(w, 504, "guard_timeout", "проверка запроса не ответила вовремя, композиция сохранена; попробуй ещё раз")
-				} else if upstream := (providerError{}); errors.As(guardErr, &upstream) && upstream.status == 429 {
-					fail(w, 429, "guard_rate_limited", "проверка запросов временно занята, попробуй позже")
-				} else {
-					log.Printf("guard failed: %T", guardErr)
-					fail(w, 502, "guard_error", "не удалось проверить запрос, композиция сохранена; попробуй ещё раз")
-				}
-				return
-			}
-			if decision == guardReject {
-				fail(w, 422, "prompt_rejected", "SyraVec собирает иллюстрации из SVG. опиши идею, метафору или желаемое расположение объектов")
-				return
-			}
-			if decision != guardAllow {
-				fail(w, 422, "prompt_uncertain", "опиши идею для иллюстрации или перечисли объекты из библиотеки — не удалось уверенно определить запрос")
-				return
-			}
+			return
 		}
-		if input.Mode == "selection" {
-			// Explicit components need arrangement, not another model call.
-			p = s.template(input)
-			warnings = append(warnings, "шаблонная раскладка, без ai")
-		} else {
-			if r.Context().Err() != nil {
-				return
-			}
-			select {
-			case s.slots <- struct{}{}:
-				defer func() { <-s.slots }()
-			default:
-				w.Header().Set("Retry-After", "1")
-				fail(w, 429, "concurrency_limit", "уже собираются две AI-композиции, попробуй чуть позже")
-				return
-			}
-			ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
-			defer cancel()
-			ctx = context.WithValue(ctx, mainModelIPKey{}, s.clientIP(r))
-			p, err = s.plan(ctx, input)
-			if err != nil {
-				if r.Context().Err() != nil {
-					return
-				}
-				var quota aiQuotaError
-				if errors.As(err, &quota) {
-					if quota.cause != nil {
-						log.Printf("AI quota storage failed: %T", quota.cause)
-						fail(w, 503, "quota_unavailable", "не удалось проверить лимит AI-генераций, попробуй позже")
-					} else {
-						respondQuota(w, quota)
-					}
-					return
-				}
-				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-					fail(w, 504, "provider_timeout", "модель не ответила вовремя, композиция сохранена")
-				} else if upstream := (providerError{}); errors.As(err, &upstream) && upstream.status == 429 {
-					fail(w, 429, "rate_limited", "лимит провайдера исчерпан, попробуй позже")
-				} else {
-					log.Printf("planner failed: %T", err)
-					fail(w, 502, "provider_error", "не удалось получить корректную композицию, попробуй еще раз или выбери шаблон")
-				}
-				return
-			}
-			source = "llm"
-		}
+		source = "llm"
 	}
 	sc, layoutWarnings := s.refine(s.scene(p, input))
 	warnings = append(warnings, layoutWarnings...)
@@ -493,7 +458,7 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 func (s *Server) routes() http.Handler {
 	m := http.NewServeMux()
 	m.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
-		respond(w, 200, map[string]any{"status": "ok", "aiConfigured": s.key != "", "model": s.model, "guardEnabled": s.guardEnabled, "guardModel": s.guardModel})
+		respond(w, 200, map[string]any{"status": "ok", "aiConfigured": s.key != "", "model": s.model, "guardEnabled": false})
 	})
 	m.HandleFunc("GET /api/v1/catalog", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, s.manifest) })
 	m.HandleFunc("POST /api/v1/compositions", s.compose)
@@ -526,12 +491,6 @@ func main() {
 	if err = s.loadUsage(); err != nil {
 		log.Fatal("could not load AI usage counters: ", err)
 	}
-	s.guardEnabled, err = strconv.ParseBool(env("AI_GUARD_ENABLED", "true"))
-	if err != nil {
-		log.Fatal("AI_GUARD_ENABLED must be true or false")
-	}
-	s.guardModel = env("AI_GUARD_MODEL", "openai/gpt-6-luna-decisions")
-	s.guardURL = env("AI_GUARD_URL", "https://openrouter.ai/api/alpha/decisions")
 	srv := &http.Server{Addr: env("LISTEN_ADDR", "127.0.0.1:8080"), Handler: s.routes(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 60 * time.Second}
 	log.Printf("api listening on %s; ai configured: %v", srv.Addr, s.key != "")
 	log.Fatal(srv.ListenAndServe())

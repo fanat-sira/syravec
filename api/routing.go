@@ -104,8 +104,8 @@ func (s *Server) routePrompt(ctx context.Context, input Request) (Request, guard
 	return input, guardAllow, nil
 }
 
-// The optional free template recognizes exact catalog names only. AI routing is
-// semantic; this offline convenience never claims to interpret arbitrary text.
+// Only exact catalog-name lists use the local layout. All other text, including
+// metaphors and unknown names, remains a concept for the main model to interpret.
 func (s *Server) templateRoute(input Request) Request {
 	input.Mode = "concept"
 	normalize := func(s string) string { return strings.ReplaceAll(strings.ToLower(strings.TrimSpace(s)), "ё", "е") }

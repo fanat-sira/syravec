@@ -14,7 +14,6 @@ import {
   Trash2,
   X,
   LoaderCircle,
-  SlidersHorizontal,
   Minus,
   Scan,
   ChevronDown,
@@ -67,17 +66,13 @@ export default function App() {
     [loading, setLoading] = useState(true),
     [loadError, setLoadError] = useState("");
   const [prompt, setPrompt] = useState(""),
-    [planner, setPlanner] = useState<"template" | "llm">("template"),
-    [ai, setAi] = useState(false),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState(""),
     [composerError, setComposerError] = useState(""),
     [library, setLibrary] = useState(true),
-    [libraryRequest, setLibraryRequest] = useState(0),
     [zoom, setZoom] = useState(100),
     [viewReset, setViewReset] = useState(0),
     [sidebar, setSidebar] = useState(() => window.innerWidth > 760),
-    [settings, setSettings] = useState(false),
     [inspectorOpen, setInspectorOpen] = useState(false),
     [zoomOpen, setZoomOpen] = useState(false),
     [renaming, setRenaming] = useState<string | null>(null),
@@ -85,9 +80,9 @@ export default function App() {
     [deleting, setDeleting] = useState<string | null>(null);
   const mainRef = useRef<HTMLElement>(null),
     stackRef = useRef<HTMLDivElement>(null),
-    zoomMenuRef = useRef<HTMLDivElement>(null),
-    aiSettingsRef = useRef<HTMLDivElement>(null);
+    zoomMenuRef = useRef<HTMLDivElement>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
+  const shimmerRef = useRef<HTMLDivElement>(null);
   const inEditor = !!project;
   const activeProject = useRef(st.current);
   useEffect(() => {
@@ -102,7 +97,6 @@ export default function App() {
     controller.current?.abort();
     setPrompt("");
     setComposerError("");
-    setSettings(false);
     setZoomOpen(false);
     setZoom(100);
     setViewReset((v) => v + 1);
@@ -135,12 +129,10 @@ export default function App() {
     function outside(e: PointerEvent) {
       if (zoomOpen && !zoomMenuRef.current?.contains(e.target as Node))
         setZoomOpen(false);
-      if (settings && !aiSettingsRef.current?.contains(e.target as Node))
-        setSettings(false);
     }
     window.addEventListener("pointerdown", outside);
     return () => window.removeEventListener("pointerdown", outside);
-  }, [settings, zoomOpen]);
+  }, [zoomOpen]);
   function resizePrompt() {
     const input = promptRef.current;
     if (!input) return;
@@ -168,6 +160,10 @@ export default function App() {
     observer.observe(input);
     return () => observer.disconnect();
   }, [inEditor, loading, st.hydrated]);
+  useLayoutEffect(() => {
+    if (shimmerRef.current && promptRef.current)
+      shimmerRef.current.scrollTop = promptRef.current.scrollTop;
+  }, [busy, prompt]);
   const controller = useRef<AbortController | null>(null),
     fileRef = useRef<HTMLInputElement>(null),
     paletteRef = useRef<HTMLInputElement>(null),
@@ -215,15 +211,6 @@ export default function App() {
       }
     }
     void load();
-    fetch("/api/v1/health")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!cancelled && d?.aiConfigured) {
-          setAi(true);
-          setPlanner("llm");
-        }
-      })
-      .catch(() => {});
     return () => {
       cancelled = true;
       controller.current?.abort();
@@ -267,7 +254,6 @@ export default function App() {
       }
       if (e.key === "Escape") {
         st.select(null);
-        setSettings(false);
         setZoomOpen(false);
         setInspectorOpen(false);
       }
@@ -275,11 +261,6 @@ export default function App() {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   });
-  function openLibrary() {
-    setLibrary(true);
-    setLibraryRequest((v) => v + 1);
-    if (window.innerWidth <= 760) setInspectorOpen(true);
-  }
   function change(s: Scene) {
     st.setScene(s);
   }
@@ -335,8 +316,8 @@ export default function App() {
       snapshot = before.projects.find((p) => p.id === current)!.scene;
     activeProject.current = current;
     setComposerError("");
+    setNotice("");
     setBusy(true);
-    setSettings(false);
     const ac = new AbortController();
     controller.current = ac;
     try {
@@ -361,7 +342,6 @@ export default function App() {
           ),
           canvasPreset: snapshot.canvas.preset,
           seed: seed.current++,
-          planner,
         }),
       });
       const data = await r.json();
@@ -798,27 +778,11 @@ export default function App() {
               open={inspectorOpen}
               close={() => setInspectorOpen(false)}
               libraryExpanded={library}
-              libraryRequest={libraryRequest}
               setLibraryExpanded={setLibrary}
             />
           </div>
         )}
       </main>
-      {(notice || st.storageError) && (
-        <div className="toast" role="status">
-          <span>{notice || st.storageError}</span>
-          <button
-            title="закрыть уведомление"
-            aria-label="закрыть уведомление"
-            onClick={() => {
-              setNotice("");
-              useStore.setState({ storageError: "" });
-            }}
-          >
-            <X size={16} />
-          </button>
-        </div>
-      )}
       {deleting && (
         <div className="confirm-backdrop" onClick={() => setDeleting(null)}>
           <div
@@ -829,6 +793,7 @@ export default function App() {
             className="confirm-delete"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
+              if (busy) return;
               if (e.key === "Escape") {
                 e.stopPropagation();
                 setDeleting(null);
@@ -891,6 +856,7 @@ export default function App() {
     </div>
   );
   function composer() {
+    const feedback = composerError || notice || st.storageError;
     return (
       <div
         className={`composer-stack ${hasScene ? "in-editor" : ""}`}
@@ -900,63 +866,40 @@ export default function App() {
           className={`composer ${hasScene ? "compact" : ""}`}
           aria-busy={busy}
         >
-          <button
-            className="attach-button icon-button"
-            title="библиотека и загрузка svg"
-            aria-label="библиотека и загрузка svg"
-            onClick={openLibrary}
-          >
-            <Plus size={19} />
-          </button>
-          <textarea
-            ref={promptRef}
-            aria-label="описание композиции"
-            aria-describedby={composerError ? "composer-error" : undefined}
-            placeholder="идея иллюстрации или названия объектов"
-            value={prompt}
-            maxLength={2000}
-            rows={1}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={(e) => {
-              if (
-                e.key === "Enter" &&
-                !e.shiftKey &&
-                !e.nativeEvent.isComposing
-              ) {
-                e.preventDefault();
-                void generate();
-              }
-            }}
-          />
-          <div className="ai-controls" ref={aiSettingsRef}>
-            <button
-              className="planner-control icon-button"
-              title="параметры генерации"
-              aria-label="параметры генерации"
-              aria-expanded={settings}
-              onClick={() => setSettings(!settings)}
-            >
-              <SlidersHorizontal size={16} />
-              <span>{planner === "llm" ? "ai" : "шаблон"}</span>
-            </button>
-            {settings && (
-              <div className="ai-settings">
-                <label>
-                  сборка
-                  <select
-                    aria-label="способ сборки"
-                    disabled={busy}
-                    value={planner}
-                    onChange={(e) =>
-                      setPlanner(e.target.value as typeof planner)
-                    }
-                  >
-                    <option value="template">по шаблону</option>
-                    <option value="llm" disabled={!ai}>
-                      ai через openrouter{ai ? "" : " · не подключен"}
-                    </option>
-                  </select>
-                </label>
+          <div className="composer-input">
+            <textarea
+              ref={promptRef}
+              aria-label="описание композиции"
+              aria-describedby={feedback ? "composer-error" : undefined}
+              placeholder="идея иллюстрации или названия объектов"
+              value={prompt}
+              maxLength={2000}
+              rows={1}
+              readOnly={busy}
+              onScroll={(e) => {
+                if (shimmerRef.current)
+                  shimmerRef.current.scrollTop = e.currentTarget.scrollTop;
+              }}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (busy) return;
+                if (
+                  e.key === "Enter" &&
+                  !e.shiftKey &&
+                  !e.nativeEvent.isComposing
+                ) {
+                  e.preventDefault();
+                  void generate();
+                }
+              }}
+            />
+            {busy && (
+              <div
+                className="composer-prompt-shimmer"
+                ref={shimmerRef}
+                aria-hidden="true"
+              >
+                <span>{prompt}</span>
               </div>
             )}
           </div>
@@ -980,14 +923,22 @@ export default function App() {
             )}
           </button>
         </div>
-        {composerError && (
-          <div className="composer-error" id="composer-error" role="alert">
-            <span>{composerError}</span>
+        {feedback && (
+          <div
+            className="composer-error"
+            id="composer-error"
+            role={composerError || st.storageError ? "alert" : "status"}
+          >
+            <span>{feedback}</span>
             <button
               className="icon-button"
               title="закрыть ошибку"
               aria-label="закрыть ошибку"
-              onClick={() => setComposerError("")}
+              onClick={() => {
+                setComposerError("");
+                setNotice("");
+                useStore.setState({ storageError: "" });
+              }}
             >
               <X size={14} />
             </button>
