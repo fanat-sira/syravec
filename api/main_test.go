@@ -80,6 +80,9 @@ func TestEndpoint(t *testing.T) {
 	}
 	r := req()
 	r.Planner = "llm"
+	r.Mode = "concept"
+	r.Prompt = "идея иллюстрации"
+	r.AssetIDs = nil
 	b, _ = json.Marshal(r)
 	if w = call(s, string(b)); w.Code != 503 {
 		t.Fatal(w.Code)

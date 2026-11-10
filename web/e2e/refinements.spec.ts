@@ -63,7 +63,7 @@ test("перетаскивание слоев меняет порядок и п�
       .evaluateAll((rows) => rows.map((r) => r.getAttribute("data-layer"))),
   ).toEqual(original);
 });
-test("экспорт сверху, инструменты вида справа снизу, ai-параметры внутри composer", async ({
+test("экспорт сверху, инструменты вида справа снизу, composer без настроек", async ({
   page,
 }) => {
   await page.goto("/");
@@ -79,12 +79,12 @@ test("экспорт сверху, инструменты вида справа 
   await expect(
     page.locator('.dock-left [aria-label="параметры генерации"]'),
   ).toHaveCount(0);
-  await page.getByRole("button", { name: "параметры генерации" }).click();
   await expect(
-    page.getByRole("combobox", { name: "способ сборки" }),
-  ).toBeVisible();
-  await expect(page.locator(".composer .ai-controls")).toBeVisible();
-  await page.getByRole("button", { name: "параметры генерации" }).click();
+    page.getByRole("button", { name: "параметры генерации" }),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(".composer .ai-controls,.composer .attach-button"),
+  ).toHaveCount(0);
   await page.getByRole("button", { name: "текущий масштаб" }).click();
   await page.getByRole("menuitem", { name: "150%", exact: true }).click();
   await expect(

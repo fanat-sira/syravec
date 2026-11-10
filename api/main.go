@@ -84,8 +84,6 @@ type Server struct {
 	assets                  []Asset
 	manifest                json.RawMessage
 	key, model, url, format string
-	guardEnabled            bool
-	guardModel, guardURL    string
 	client                  *http.Client
 	slots                   chan struct{}
 	mu                      sync.Mutex

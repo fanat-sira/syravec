@@ -17,7 +17,9 @@ test("composer без чата и json, кнопки выровнены", async 
       name: /сохранить проект|открыть проект|история генераций|из объектов|по идее/,
     }),
   ).toHaveCount(0);
-  await expect(page.locator(".composer .ai-controls")).toContainText("ai");
+  await expect(
+    page.locator(".composer .ai-controls,.composer .attach-button"),
+  ).toHaveCount(0);
   const rects = await page
     .locator(
       ".composer > .icon-button,.composer > .generate,.composer .ai-controls > .icon-button",
@@ -28,7 +30,7 @@ test("composer без чата и json, кнопки выровнены", async 
         return { center: r.y + r.height / 2, height: r.height };
       }),
     );
-  expect(rects).toHaveLength(3);
+  expect(rects).toHaveLength(1);
   for (const r of rects) {
     expect(r.height).toBe(36);
     expect(r.center).toBeCloseTo(rects[0].center, 0);
@@ -61,49 +63,61 @@ test("стоп в кнопке отправки сохраняет сцену и
   expect(Math.abs(after.y - before!.y)).toBeLessThanOrEqual(1);
   expect(after.x).toBe(before!.x);
   await expect(button.locator(".lucide-square")).toHaveCount(1);
+  await expect(input).not.toBeEditable();
+  await expect(page.locator(".composer-prompt-shimmer")).toHaveText(
+    "книга и телефон рядом",
+  );
   await expect(page.locator(".generation-progress")).toHaveCount(0);
   await button.click();
   release();
   await expect(button).toHaveAttribute("aria-label", "собрать композицию");
   await expect(input).toHaveValue("книга и телефон рядом");
+  await expect(input).toBeEditable();
+  await expect(page.locator(".composer-prompt-shimmer")).toHaveCount(0);
   expect(await page.locator(".artboard").innerHTML()).toBe(scene);
 });
-test("auto-запрос, постоянная ошибка и сохранение нового черновика", async ({
+test("ошибка над composer сохраняет запрос и не двигает инструменты", async ({
   page,
 }) => {
   let received: any, release!: () => void;
-  const gate = new Promise<void>((r) => (release = r));
-  await page.route("**/api/v1/compositions", async (r) => {
-    received = r.request().postDataJSON();
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/v1/compositions", async (route) => {
+    received = route.request().postDataJSON();
     await gate;
-    await r.fulfill({
-      status: 422,
-      json: { error: { message: "уточни объекты из библиотеки" } },
+    await route.fulfill({
+      status: 502,
+      json: { error: { message: "не удалось получить композицию" } },
     });
   });
   const input = page.getByRole("textbox", { name: "описание композиции" });
-  await input.fill("поставь книгу рядом с телефоном");
+  await input.fill("циферблат это монета а стрелки это ручки");
+  const composerBefore = await page.locator(".composer").boundingBox();
+  const undoBefore = await page.locator(".dock-left").boundingBox();
+  const zoomBefore = await page.locator(".dock-right").boundingBox();
   await page.locator(".generate").click();
-  await expect(page.locator(".generate")).toHaveAttribute(
-    "aria-label",
-    "остановить сборку",
-  );
-  await input.fill("знания открывают двери");
+  await expect(input).not.toBeEditable();
+  await input.focus();
+  await page.keyboard.type("другой текст");
+  await expect(input).toHaveValue("циферблат это монета а стрелки это ручки");
   release();
-  await expect(page.getByRole("alert")).toContainText("уточни объекты");
+  const error = page.getByRole("alert");
+  await expect(error).toContainText("не удалось получить композицию");
   expect(received.mode).toBe("auto");
   expect(received.assetIds).toEqual([]);
-  await expect(input).toHaveValue("знания открывают двери");
+  await expect(input).toBeEditable();
+  await expect(input).toHaveValue("циферблат это монета а стрелки это ручки");
+  expect(await page.locator(".composer").boundingBox()).toEqual(composerBefore);
+  expect(await page.locator(".dock-left").boundingBox()).toEqual(undoBefore);
+  expect(await page.locator(".dock-right").boundingBox()).toEqual(zoomBefore);
+  const box = (await error.boundingBox())!;
+  expect(box.y + box.height).toBeLessThanOrEqual(composerBefore!.y);
+  await page.getByRole("button", { name: "закрыть ошибку" }).click();
+  expect(await page.locator(".composer").boundingBox()).toEqual(composerBefore);
   await expect(page.locator(".layer-row")).toHaveCount(3);
 });
-test("названия объектов в composer работают с go-шаблоном", async ({
+test("названия объектов автоматически работают с go-шаблоном", async ({
   page,
 }) => {
-  await page.getByRole("button", { name: "параметры генерации" }).click();
-  await page
-    .getByRole("combobox", { name: "способ сборки" })
-    .selectOption("template");
-  await page.getByRole("button", { name: "параметры генерации" }).click();
   const input = page.getByRole("textbox", { name: "описание композиции" });
   await input.fill("Книга, Телефон, Пазлы");
   await page.locator(".generate").click();

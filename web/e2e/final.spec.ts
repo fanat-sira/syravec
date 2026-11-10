@@ -133,7 +133,6 @@ test("новая композиция сбрасывает выделение, �
   await page
     .getByRole("textbox", { name: "описание композиции" })
     .fill("черновик");
-  await page.getByRole("button", { name: "параметры генерации" }).click();
   await page
     .getByRole("button", { name: "новая композиция", exact: true })
     .click();
