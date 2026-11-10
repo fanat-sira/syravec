@@ -1,0 +1,28 @@
+name: checks
+on:
+  push:
+  pull_request:
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache-dependency-path: api/go.mod
+      - run: go test ./... && go vet ./...
+        working-directory: api
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm test && npm run build
+        working-directory: web

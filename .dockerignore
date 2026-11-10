@@ -1,0 +1,12 @@
+.git
+.env
+.env.*
+!.env.example
+.aws
+.agents
+.codex
+**/node_modules
+**/dist
+**/test-results
+originals
+syravec-development-docs

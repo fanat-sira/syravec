@@ -1,0 +1,45 @@
+# локальные настройки и секреты
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.aws
+.agents
+.codex
+
+# зависимости и результаты сборки
+node_modules/
+dist/
+build/
+coverage/
+.next/
+.nuxt/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# логи и временные файлы
+*.log
+tmp/
+temp/
+*.tmp
+
+# редакторы и операционные системы
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# локальные материалы тестового, права публикации не подтверждены
+originals/
+/*.svg
+/*.zip
+web/public/assets/*.svg
+web/test-results/
+web/playwright-report/
+*.tsbuildinfo
+artifacts/

@@ -1,0 +1,435 @@
+{
+  "assets": [
+    {
+      "id": "puzzle-main",
+      "displayName": "Пазлы",
+      "variant": "main",
+      "tags": [
+        "идеи",
+        "творчество",
+        "решение",
+        "команда"
+      ],
+      "viewBox": [
+        0,
+        0,
+        545,
+        314
+      ],
+      "assetUrl": "/assets/puzzle-main.svg"
+    },
+    {
+      "id": "puzzle-background",
+      "displayName": "Пазлы",
+      "variant": "background",
+      "tags": [
+        "идеи",
+        "творчество",
+        "решение",
+        "команда"
+      ],
+      "viewBox": [
+        0,
+        0,
+        545,
+        314
+      ],
+      "assetUrl": "/assets/puzzle-background.svg"
+    },
+    {
+      "id": "book-main",
+      "displayName": "Книга",
+      "variant": "main",
+      "tags": [
+        "знания",
+        "образование",
+        "обучение",
+        "чтение"
+      ],
+      "viewBox": [
+        0,
+        0,
+        1446,
+        977
+      ],
+      "assetUrl": "/assets/book-main.svg"
+    },
+    {
+      "id": "book-background",
+      "displayName": "Книга",
+      "variant": "background",
+      "tags": [
+        "знания",
+        "образование",
+        "обучение",
+        "чтение"
+      ],
+      "viewBox": [
+        0,
+        0,
+        1446,
+        977
+      ],
+      "assetUrl": "/assets/book-background.svg"
+    },
+    {
+      "id": "phone-main",
+      "displayName": "Телефон",
+      "variant": "main",
+      "tags": [
+        "связь",
+        "технологии",
+        "общение"
+      ],
+      "viewBox": [
+        0,
+        0,
+        797,
+        462
+      ],
+      "assetUrl": "/assets/phone-main.svg"
+    },
+    {
+      "id": "phone-background",
+      "displayName": "Телефон",
+      "variant": "background",
+      "tags": [
+        "связь",
+        "технологии",
+        "общение"
+      ],
+      "viewBox": [
+        0,
+        0,
+        797,
+        462
+      ],
+      "assetUrl": "/assets/phone-background.svg"
+    },
+    {
+      "id": "headphones-main",
+      "displayName": "Наушники",
+      "variant": "main",
+      "tags": [
+        "музыка",
+        "звук",
+        "отдых"
+      ],
+      "viewBox": [
+        0,
+        0,
+        889,
+        692
+      ],
+      "assetUrl": "/assets/headphones-main.svg"
+    },
+    {
+      "id": "headphones-background",
+      "displayName": "Наушники",
+      "variant": "background",
+      "tags": [
+        "музыка",
+        "звук",
+        "отдых"
+      ],
+      "viewBox": [
+        0,
+        0,
+        889,
+        692
+      ],
+      "assetUrl": "/assets/headphones-background.svg"
+    },
+    {
+      "id": "lamp-main",
+      "displayName": "Лампа",
+      "variant": "main",
+      "tags": [
+        "идея",
+        "свет",
+        "работа",
+        "вдохновение"
+      ],
+      "viewBox": [
+        0,
+        0,
+        946,
+        1129
+      ],
+      "assetUrl": "/assets/lamp-main.svg"
+    },
+    {
+      "id": "lamp-background",
+      "displayName": "Лампа",
+      "variant": "background",
+      "tags": [
+        "идея",
+        "свет",
+        "работа",
+        "вдохновение"
+      ],
+      "viewBox": [
+        0,
+        0,
+        946,
+        1129
+      ],
+      "assetUrl": "/assets/lamp-background.svg"
+    },
+    {
+      "id": "wallet-main",
+      "displayName": "Кошелек",
+      "variant": "main",
+      "tags": [
+        "финансы",
+        "деньги",
+        "бюджет"
+      ],
+      "viewBox": [
+        0,
+        0,
+        631,
+        397
+      ],
+      "assetUrl": "/assets/wallet-main.svg"
+    },
+    {
+      "id": "wallet-background",
+      "displayName": "Кошелек",
+      "variant": "background",
+      "tags": [
+        "финансы",
+        "деньги",
+        "бюджет"
+      ],
+      "viewBox": [
+        0,
+        0,
+        631,
+        397
+      ],
+      "assetUrl": "/assets/wallet-background.svg"
+    },
+    {
+      "id": "pen-main",
+      "displayName": "Ручка",
+      "variant": "main",
+      "tags": [
+        "письмо",
+        "творчество",
+        "работа"
+      ],
+      "viewBox": [
+        0,
+        0,
+        509,
+        286
+      ],
+      "assetUrl": "/assets/pen-main.svg"
+    },
+    {
+      "id": "pen-background",
+      "displayName": "Ручка",
+      "variant": "background",
+      "tags": [
+        "письмо",
+        "творчество",
+        "работа"
+      ],
+      "viewBox": [
+        0,
+        0,
+        509,
+        286
+      ],
+      "assetUrl": "/assets/pen-background.svg"
+    },
+    {
+      "id": "folder-main",
+      "displayName": "Папка",
+      "variant": "main",
+      "tags": [
+        "документы",
+        "порядок",
+        "работа"
+      ],
+      "viewBox": [
+        0,
+        0,
+        1241,
+        659
+      ],
+      "assetUrl": "/assets/folder-main.svg"
+    },
+    {
+      "id": "folder-background",
+      "displayName": "Папка",
+      "variant": "background",
+      "tags": [
+        "документы",
+        "порядок",
+        "работа"
+      ],
+      "viewBox": [
+        0,
+        0,
+        1241,
+        659
+      ],
+      "assetUrl": "/assets/folder-background.svg"
+    },
+    {
+      "id": "coin-main",
+      "displayName": "Монета",
+      "variant": "main",
+      "tags": [
+        "деньги",
+        "инвестиции",
+        "финансы"
+      ],
+      "viewBox": [
+        0,
+        0,
+        287,
+        189
+      ],
+      "assetUrl": "/assets/coin-main.svg"
+    },
+    {
+      "id": "coin-background",
+      "displayName": "Монета",
+      "variant": "background",
+      "tags": [
+        "деньги",
+        "инвестиции",
+        "финансы"
+      ],
+      "viewBox": [
+        0,
+        0,
+        287,
+        189
+      ],
+      "assetUrl": "/assets/coin-background.svg"
+    },
+    {
+      "id": "flowers-main",
+      "displayName": "Цветы",
+      "variant": "main",
+      "tags": [
+        "природа",
+        "рост",
+        "красота",
+        "жизнь"
+      ],
+      "viewBox": [
+        0,
+        0,
+        591,
+        748
+      ],
+      "assetUrl": "/assets/flowers-main.svg"
+    },
+    {
+      "id": "flowers-background",
+      "displayName": "Цветы",
+      "variant": "background",
+      "tags": [
+        "природа",
+        "рост",
+        "красота",
+        "жизнь"
+      ],
+      "viewBox": [
+        0,
+        0,
+        591,
+        748
+      ],
+      "assetUrl": "/assets/flowers-background.svg"
+    }
+  ],
+  "backgrounds": [
+    {
+      "id": "background-square-violet",
+      "preset": "square",
+      "palette": "violet",
+      "viewBox": [
+        0,
+        0,
+        1000,
+        1000
+      ],
+      "assetUrl": "/assets/background-square-violet.svg"
+    },
+    {
+      "id": "background-square-teal",
+      "preset": "square",
+      "palette": "teal",
+      "viewBox": [
+        0,
+        0,
+        1000,
+        1000
+      ],
+      "assetUrl": "/assets/background-square-teal.svg"
+    },
+    {
+      "id": "background-square-warm",
+      "preset": "square",
+      "palette": "warm",
+      "viewBox": [
+        0,
+        0,
+        1000,
+        1000
+      ],
+      "assetUrl": "/assets/background-square-warm.svg"
+    },
+    {
+      "id": "background-landscape-violet",
+      "preset": "landscape",
+      "palette": "violet",
+      "viewBox": [
+        0,
+        0,
+        1000,
+        1000
+      ],
+      "assetUrl": "/assets/background-landscape-violet.svg"
+    },
+    {
+      "id": "background-landscape-teal",
+      "preset": "landscape",
+      "palette": "teal",
+      "viewBox": [
+        0,
+        0,
+        1000,
+        1000
+      ],
+      "assetUrl": "/assets/background-landscape-teal.svg"
+    },
+    {
+      "id": "background-landscape-warm",
+      "preset": "landscape",
+      "palette": "warm",
+      "viewBox": [
+        0,
+        0,
+        1000,
+        1000
+      ],
+      "assetUrl": "/assets/background-landscape-warm.svg"
+    }
+  ],
+  "palettes": [
+    "violet",
+    "teal",
+    "warm"
+  ],
+  "canvasPresets": [
+    "square",
+    "landscape"
+  ]
+}

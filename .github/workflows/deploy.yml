@@ -1,0 +1,21 @@
+name: deploy
+
+on:
+  workflow_dispatch:
+  # включить после настройки настоящего деплоя
+  # push:
+  #   branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: deploy placeholder
+        run: echo 'deployment is not configured yet'
