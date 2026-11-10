@@ -119,7 +119,9 @@ test("библиотека и свойства доступны в мобиль�
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await page.getByRole("button", { name: /на своей волне/ }).click();
-  await page.getByTitle("библиотека и загрузка svg").click();
+  await page
+    .getByRole("button", { name: "открыть инспектор", exact: true })
+    .click();
   await expect(page.locator(".inspector")).toBeVisible();
   await page.getByRole("button", { name: "добавить Книга на холст" }).click();
   await expect(page.locator(".layer-row.active")).toContainText("Книга");
