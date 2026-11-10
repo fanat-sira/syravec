@@ -49,9 +49,10 @@ test("старт, редактор, история, загрузки, векто
   await expect(page.getByRole("heading")).toBeVisible();
   await page
     .getByRole("textbox", { name: "описание композиции" })
-    .fill("образование и новые идеи");
+    .fill("2 монеты, ручка и лампа");
   await page.getByRole("button", { name: "собрать композицию" }).click();
-  await expect(page.locator(".layer-row").first()).toBeVisible();
+  await expect(page.locator(".layer-row")).toHaveCount(4);
+  await expect(page.locator(".layer-list")).toContainText("Монета");
   await expect(page.locator(".history-row")).toHaveCount(count + 1);
   // Upload stays vector; unsafe input is rejected without altering the scene
   const before = await page.locator(".layer-row").count();
