@@ -2430,10 +2430,10 @@ button:active:not(:disabled) {
   height: 100%;
 }
 
-/* A single composer: every action shares the input's baseline and hit area. */
+/* The composer grows upward; send/stop stays at the bottom edge. */
 .composer,
 .compact.composer {
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
   min-height: 56px;
   padding: 8px;
@@ -2572,4 +2572,9 @@ button:active:not(:disabled) {
 .section-layers > .section-body {
   padding-top: 6px;
   padding-bottom: 6px;
+}
+
+.composer > .generate {
+  align-self: flex-end;
+  margin-bottom: 1px;
 }

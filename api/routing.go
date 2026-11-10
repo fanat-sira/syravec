@@ -10,7 +10,6 @@ func (s *Server) templateRoute(input Request) Request {
 	text := normalize(input.Prompt)
 	parts := strings.FieldsFunc(text, func(r rune) bool { return r == ',' || r == ';' || r == '\n' })
 	ids := []string{}
-	seen := map[string]bool{}
 	for _, part := range parts {
 		found := ""
 		for _, asset := range s.assets {
@@ -22,12 +21,9 @@ func (s *Server) templateRoute(input Request) Request {
 		if found == "" {
 			return input
 		}
-		if !seen[found] {
-			ids = append(ids, found)
-			seen[found] = true
-		}
+		ids = append(ids, found)
 	}
-	if len(ids) > 0 && len(ids) <= 12 {
+	if len(ids) > 0 && len(ids) <= 40 {
 		input.Mode = "selection"
 		input.AssetIDs = ids
 	}

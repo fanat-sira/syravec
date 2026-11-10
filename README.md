@@ -65,7 +65,7 @@ sudo docker compose down
 3. To rearrange the current objects, use **«перекомпоновать объекты»** at the bottom of Layers. Repeat for another layout; one Undo restores the previous scene.
 4. Change the format or palette in Properties, then use **«экспорт svg»** above the canvas.
 
-The layer action supports **2–12 different built-in SVGs**. Custom SVGs, repeated copies of the same SVG, and locked layers disable it with an explanation. They remain available for manual editing. A literal list of catalog names in Composer uses the local template; other text goes directly to the main model.
+The layer action rearranges the current canvas, including a single object, repeated copies, uploaded SVGs, and locked layers. Copies keep separate IDs. Explicit rearrangement can move locked layers; their manual lock flags remain set. A literal list of catalog names in Composer uses the local template; other text goes directly to the main model.
 
 Projects and uploaded SVGs stay in the current browser's IndexedDB. Clearing site data removes them. SVG uploads support static vector content without scripts, raster images, or external resources; custom palette uploads use the example JSON available in Properties.
 
@@ -107,6 +107,6 @@ The model receives catalog descriptions, proportions, and visual metadata. It re
 - [`scripts/`](scripts/) — asset preparation, deployment, and CI helpers.
 - [`deploy/`](deploy/) — nginx and certificate configuration.
 
-[Architecture](docs/architecture.md) · [Development](docs/development.md) · [Deployment and HTTPS](docs/deployment.md)
+[Architecture](docs/architecture.md) · [OpenRouter request/response](docs/openrouter.md) · [Development](docs/development.md) · [Deployment and HTTPS](docs/deployment.md)
 
 GitHub Actions runs the configured checks, builds and publishes images, and deploys successful `main` pushes through a self-hosted runner. See the deployment guide before configuring a fork or another server.

@@ -46,7 +46,6 @@ interface Props {
   libraryExpanded: boolean;
   setLibraryExpanded: (v: boolean) => void;
   recompose: () => void;
-  recomposeUnavailable: string;
   composing: boolean;
   recomposing: boolean;
   cancelRecompose: () => void;
@@ -420,21 +419,15 @@ export function Inspector(p: Props) {
             p.scene.layers.length > 0 && (
               <div
                 className="layers-compose"
-                title={
-                  p.recomposeUnavailable || "расположить текущие объекты заново"
-                }
-                tabIndex={p.recomposeUnavailable ? 0 : undefined}
+                title={"расположить текущие объекты заново"}
                 aria-describedby="layers-compose-hint"
               >
                 <button
                   className="layers-compose-button"
                   onClick={p.recomposing ? p.cancelRecompose : p.recompose}
-                  disabled={
-                    !p.recomposing && (p.composing || !!p.recomposeUnavailable)
-                  }
+                  disabled={!p.recomposing && p.composing}
                   aria-describedby="layers-compose-hint"
                   title={
-                    p.recomposeUnavailable ||
                     "автоматически расположить текущие объекты; отмена — ctrl / ⌘ + z"
                   }
                 >
@@ -455,12 +448,11 @@ export function Inspector(p: Props) {
                   )}
                 </button>
                 <small id="layers-compose-hint" hidden>
-                  {p.recomposeUnavailable ||
-                    (p.aiConfigured === false
-                      ? "шаблонная сборка · ai не подключен"
-                      : p.aiConfigured === true
-                        ? "ai расставит только эти объекты"
-                        : "автоматическая компоновка текущих объектов")}
+                  {p.aiConfigured === false
+                    ? "шаблонная сборка · ai не подключен"
+                    : p.aiConfigured === true
+                      ? "ai расставит только эти объекты"
+                      : "автоматическая компоновка текущих объектов"}
                 </small>
               </div>
             )

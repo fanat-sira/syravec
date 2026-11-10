@@ -312,26 +312,8 @@ export default function App() {
   function format(preset: Scene["canvas"]["preset"]) {
     change(adaptFormat(scene, preset, assets));
   }
-  function recomposeUnavailable(s: Scene = scene) {
-    if (s.layers.length < 2) return "добавь хотя бы два объекта";
-    if (s.layers.length > 12) return "можно собрать от 2 до 12 объектов";
-    if (s.layers.some((l) => !catalog.some((a) => a.id === l.assetId)))
-      return "свои SVG можно компоновать вручную; здесь доступны объекты исходной библиотеки";
-    if (new Set(s.layers.map((l) => l.assetId)).size !== s.layers.length)
-      return "для этой сборки нужны разные объекты — копии одного SVG пока не поддерживаются";
-    if (s.layers.some((l) => l.locked))
-      return "разблокируй слои перед перекомпоновкой";
-    return "";
-  }
   async function generate(text = prompt, fromLayers = false) {
     if (busy || loading) return;
-    if (fromLayers) {
-      const reason = recomposeUnavailable();
-      if (reason) {
-        setComposerError(reason);
-        return;
-      }
-    }
     if (!fromLayers && !text.trim()) {
       promptRef.current?.focus();
       return;
@@ -357,6 +339,18 @@ export default function App() {
           mode: fromLayers ? "selection" : "auto",
           prompt: fromLayers ? "" : text.trim(),
           assetIds: fromLayers ? snapshot.layers.map((l) => l.assetId) : [],
+          customAssets: fromLayers
+            ? [...new Set(snapshot.layers.map((l) => l.assetId))]
+                .filter((id) => !catalog.some((a) => a.id === id))
+                .map((id) => {
+                  const asset = assets.find((a) => a.id === id)!;
+                  return {
+                    id,
+                    displayName: asset.displayName.slice(0, 200),
+                    viewBox: asset.viewBox,
+                  };
+                })
+            : undefined,
           palette: snapshot.palette,
           paletteColors: Object.fromEntries(
             ["strong", "medium", "light", "highlight", "pink", "soft"].map(
@@ -381,27 +375,36 @@ export default function App() {
         assets,
       );
       if (fromLayers) {
-        const original = new Map(snapshot.layers.map((l) => [l.assetId, l]));
-        const ids = result.layers.map((l) => l.assetId);
-        if (
-          ids.length !== snapshot.layers.length ||
-          new Set(ids).size !== ids.length ||
-          ids.some((id) => !original.has(id))
-        )
+        const originals = new Map<string, Scene["layers"]>();
+        for (const original of snapshot.layers) {
+          const instances = originals.get(original.assetId) ?? [];
+          instances.push(original);
+          originals.set(original.assetId, instances);
+        }
+        if (result.layers.length !== snapshot.layers.length)
           throw Error(
-            "модель изменила набор объектов; прежняя композиция сохранена",
+            "модель изменила число объектов; прежняя композиция сохранена",
           );
-        result = {
-          ...snapshot,
-          layers: result.layers.map((l) => ({
-            ...original.get(l.assetId)!,
-            x: l.x,
-            y: l.y,
-            scale: l.scale,
-            rotation: l.rotation,
-            role: l.role,
-          })),
-        };
+        const layers = result.layers.map((planned) => {
+          const original = originals.get(planned.assetId)?.shift();
+          if (!original)
+            throw Error(
+              "модель изменила набор объектов; прежняя композиция сохранена",
+            );
+          return {
+            ...original,
+            x: planned.x,
+            y: planned.y,
+            scale: planned.scale,
+            rotation: planned.rotation,
+            role: planned.role,
+          };
+        });
+        if ([...originals.values()].some((instances) => instances.length))
+          throw Error(
+            "модель пропустила объекты; прежняя композиция сохранена",
+          );
+        result = { ...snapshot, layers };
       }
       const now = useStore.getState();
       if (now.revision !== revision || now.current !== current) {
@@ -842,7 +845,6 @@ export default function App() {
               libraryExpanded={library}
               setLibraryExpanded={setLibrary}
               recompose={() => void generate("", true)}
-              recomposeUnavailable={recomposeUnavailable()}
               composing={busy}
               recomposing={recomposing}
               cancelRecompose={() => controller.current?.abort()}

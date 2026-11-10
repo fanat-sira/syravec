@@ -55,15 +55,21 @@ type Scene struct {
 	BackgroundID string  `json:"backgroundId"`
 	Layers       []Layer `json:"layers"`
 }
+type CustomAssetDescriptor struct {
+	ID          string    `json:"id"`
+	DisplayName string    `json:"displayName"`
+	ViewBox     []float64 `json:"viewBox"`
+}
 type Request struct {
-	Mode          string            `json:"mode"`
-	Prompt        string            `json:"prompt"`
-	AssetIDs      []string          `json:"assetIds"`
-	Palette       string            `json:"palette"`
-	CanvasPreset  string            `json:"canvasPreset"`
-	Seed          int               `json:"seed"`
-	Planner       string            `json:"planner"`
-	PaletteColors map[string]string `json:"paletteColors,omitempty"`
+	CustomAssets  []CustomAssetDescriptor `json:"customAssets,omitempty"`
+	Mode          string                  `json:"mode"`
+	Prompt        string                  `json:"prompt"`
+	AssetIDs      []string                `json:"assetIds"`
+	Palette       string                  `json:"palette"`
+	CanvasPreset  string                  `json:"canvasPreset"`
+	Seed          int                     `json:"seed"`
+	Planner       string                  `json:"planner"`
+	PaletteColors map[string]string       `json:"paletteColors,omitempty"`
 }
 type Item struct {
 	AssetID      string   `json:"assetId"`
@@ -92,6 +98,7 @@ type Server struct {
 	usagePath               string
 	trustProxy              bool
 	aiLimits                aiQuotaLimits
+	quotaOwner              *Server
 }
 
 func env(k, d string) string {
@@ -131,8 +138,8 @@ func (s *Server) validate(r Request) error {
 	if r.Mode == "auto" && len(r.AssetIDs) != 0 {
 		return errors.New("в автоматическом режиме объекты определяются по запросу")
 	}
-	if len(r.AssetIDs) > 12 || r.Mode == "selection" && len(r.AssetIDs) == 0 {
-		return errors.New("выбери от 1 до 12 объектов")
+	if len(r.AssetIDs) > 40 || r.Mode == "selection" && len(r.AssetIDs) == 0 {
+		return errors.New("передай объекты текущего холста")
 	}
 	for key, value := range r.PaletteColors {
 		if !strings.Contains(" strong medium light highlight pink soft ", " "+key+" ") || len(value) != 7 || value[0] != '#' {
@@ -144,7 +151,7 @@ func (s *Server) validate(r Request) error {
 	}
 	seen := map[string]bool{}
 	for _, id := range r.AssetIDs {
-		if !s.has(id) || seen[id] {
+		if !s.has(id) || (r.Mode != "selection" && seen[id]) {
 			return errors.New("неизвестный или повторяющийся объект")
 		}
 		seen[id] = true
@@ -160,22 +167,22 @@ func (s *Server) has(id string) bool {
 	return false
 }
 func (s *Server) validatePlan(p Plan, r Request) error {
-	if len(p.Items) < 1 || len(p.Items) > 12 {
+	if len(p.Items) < 1 || len(p.Items) > planItemLimit(r) {
 		return errors.New("неверное число объектов")
 	}
-	found := map[string]bool{}
-	required := map[string]bool{}
+	found := map[string]int{}
+	required := map[string]int{}
 	for _, id := range r.AssetIDs {
-		required[id] = true
+		required[id]++
 	}
 	for _, i := range p.Items {
 		if !s.has(i.AssetID) {
 			return errors.New("модель выбрала неизвестный объект")
 		}
-		if r.Mode == "selection" && !required[i.AssetID] {
+		if r.Mode == "selection" && required[i.AssetID] == 0 {
 			return errors.New("модель добавила лишний объект")
 		}
-		if found[i.AssetID] && r.Mode == "selection" {
+		if r.Mode == "selection" && found[i.AssetID] >= required[i.AssetID] {
 			return errors.New("модель повторила объект")
 		}
 		if i.Role != "" && i.Role != "focal" && i.Role != "support" && i.Role != "decor" {
@@ -184,7 +191,7 @@ func (s *Server) validatePlan(p Plan, r Request) error {
 		if i.Opacity != nil && (math.IsNaN(*i.Opacity) || math.IsInf(*i.Opacity, 0) || *i.Opacity < 0 || *i.Opacity > 1) {
 			return errors.New("неверная прозрачность")
 		}
-		found[i.AssetID] = true
+		found[i.AssetID]++
 		for _, v := range []float64{i.X, i.Y, i.RelativeSize, i.Rotation} {
 			if math.IsNaN(v) || math.IsInf(v, 0) {
 				return errors.New("неверные координаты")
@@ -207,7 +214,7 @@ func (s *Server) validatePlan(p Plan, r Request) error {
 	}
 	if r.Mode == "selection" {
 		for id := range required {
-			if !found[id] {
+			if found[id] != required[id] {
 				return errors.New("модель пропустила выбранный объект")
 			}
 		}
@@ -367,7 +374,7 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 		fail(w, 415, "invalid_request", "нужен application/json")
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	r.Body = http.MaxBytesReader(w, r.Body, 128<<10)
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
 	var input Request
@@ -378,8 +385,12 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 			err = errors.New("лишние данные после json")
 		}
 	}
+	composer := s
 	if err == nil {
-		err = s.validate(input)
+		composer, err = s.forRequest(input)
+	}
+	if err == nil {
+		err = composer.validate(input)
 	}
 	if err != nil {
 		fail(w, 400, "invalid_request", "проверь запрос: "+err.Error())
@@ -405,7 +416,7 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 	source := "fallback"
 	warnings := []string{}
 	if input.Planner == "template" {
-		p = s.template(input)
+		p = composer.template(input)
 		warnings = append(warnings, "шаблонная раскладка, без ai")
 	} else {
 		if s.key == "" {
@@ -426,7 +437,7 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 		defer cancel()
 		ctx = context.WithValue(ctx, mainModelIPKey{}, s.clientIP(r))
-		p, err = s.plan(ctx, input)
+		p, err = composer.plan(ctx, input)
 		if err != nil {
 			if r.Context().Err() != nil {
 				return
@@ -453,7 +464,7 @@ func (s *Server) compose(w http.ResponseWriter, r *http.Request) {
 		}
 		source = "llm"
 	}
-	sc, layoutWarnings := s.refine(s.scene(p, input))
+	sc, layoutWarnings := composer.refine(composer.scene(p, input))
 	warnings = append(warnings, layoutWarnings...)
 	respond(w, 200, map[string]any{"scene": sc, "generation": map[string]any{"mode": input.Mode, "source": source, "warnings": warnings, "concept": p.Concept, "layout": p.Layout}})
 }
