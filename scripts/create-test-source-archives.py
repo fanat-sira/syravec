@@ -5,6 +5,12 @@ import sys
 import zipfile
 from pathlib import Path
 
+small_groups = {
+    'book-main': 'Group 2136136335', 'book-background': 'Group 2136136341',
+    'pen-main': 'Group 2136136336', 'pen-background': 'Group 2136136343',
+    'folder-main': 'Group 2136136337', 'folder-background': 'Group 2136136342',
+    'flowers-main': 'Group 2136136345', 'flowers-background': 'Group 2136136346',
+}
 root = Path(sys.argv[1])
 root.mkdir(parents=True, exist_ok=True)
 manifest = json.loads(Path('web/public/assets/manifest.json').read_text())
@@ -23,7 +29,7 @@ for size in ['large', 'small']:
                 else:
                     source = asset['displayName'] + ('-1' if asset['variant'] == 'background' else '')
             else:
-                source = f'Group synthetic-{index}'
+                source = small_groups.get(asset['id'], asset['displayName'] + ('-1' if asset['variant'] == 'background' else ''))
             color = '#181817' if asset['variant'] == 'main' else '#7864d7'
             paths = f'<path fill="{color}" d="M0 0H{w}V{h}H0Z"/>'
             if size == 'large':

@@ -151,6 +151,30 @@ try {
       pathCount: source.pathCount,
     };
   }
+  // Explicit correspondence verified against BOTH supplied original archives.
+  // Group filenames differ between sets; native dimensions are not forced to 1/2.
+  const smallFiles = {
+    "puzzle-main": "Пазлы",
+    "puzzle-background": "Пазлы-1",
+    "book-main": "Group 2136136335",
+    "book-background": "Group 2136136341",
+    "phone-main": "Телефон",
+    "phone-background": "Телефон-1",
+    "headphones-main": "Наушники",
+    "headphones-background": "Наушники-1",
+    "lamp-main": "Лампа",
+    "lamp-background": "Лампа-1",
+    "wallet-main": "Кошелек",
+    "wallet-background": "Кошелек-1",
+    "pen-main": "Group 2136136336",
+    "pen-background": "Group 2136136343",
+    "folder-main": "Group 2136136337",
+    "folder-background": "Group 2136136342",
+    "coin-main": "Монета",
+    "coin-background": "Монета-1",
+    "flowers-main": "Group 2136136345",
+    "flowers-background": "Group 2136136346",
+  };
   const assets = [];
   for (const [id, displayName, file, tags] of items)
     for (const variant of ["main", "background"]) {
@@ -163,21 +187,14 @@ try {
             ? "Group 2136136347"
             : file + "-1",
       );
-      // Match source geometry signatures, not Group filenames. An ambiguous signature
-      // stops preparation; sourceFile + SHA in the manifest records the exact pairing.
-      const smallCandidates = records.small.filter(
-        (r) =>
-          Math.abs(r.viewBox[2] - large.viewBox[2] / 2) <= 1 &&
-          Math.abs(r.viewBox[3] - large.viewBox[3] / 2) <= 1 &&
-          r.isMain === (variant === "main"),
-      );
-      if (smallCandidates.length !== 1)
+      const small = named("small", smallFiles[key]);
+      if (small.isMain !== (variant === "main"))
         throw Error(
-          `нельзя однозначно сопоставить ${key} с малым исходником: ${smallCandidates.map((r) => r.file).join(", ") || "нет совпадений"}`,
+          `неверная цветовая роль малого исходника ${key}: ${small.file}`,
         );
       const sets = {
         large: save("large", key, large),
-        small: save("small", key, smallCandidates[0]),
+        small: save("small", key, small),
       };
       assets.push({
         id: key,

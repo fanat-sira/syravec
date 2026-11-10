@@ -35,7 +35,7 @@ Custom SVGs retain their original dimensions. An uploaded asset records the comp
 | Coin | `coin-main` | `coin-background` |
 | Flowers | `flowers-main` | `flowers-background` |
 
-Large sources use an explicit name mapping. Small sources are matched by a unique native width/height signature and main/background color role rather than by filenames such as `Group ...`. Missing or ambiguous matches stop preparation. The manifest records each exact source filename, SHA-256 hash, path count, and measured geometry separately under `sets.large` and `sets.small`. Actual backgrounds are selected by the explicit `Фон.svg`, `Фон-1.svg`, and `Фон-2.svg` names.
+Large sources use an explicit name mapping. Small sources use an explicit 20-entry correspondence verified against the supplied archives, including their unrelated `Group ...` filenames. Native dimensions are read independently; flowers and coin need not be exactly half-sized. Color roles are checked and missing or ambiguous sources stop preparation. The manifest records each exact source filename, SHA-256 hash, path count, and measured geometry separately under `sets.large` and `sets.small`. Actual backgrounds are selected by the explicit `Фон.svg`, `Фон-1.svg`, and `Фон-2.svg` names.
 
 Original SVG bytes are copied unchanged. Both sets are measured with librsvg and staged before the versioned library directory and manifest are published. API and web use the same prepared manifest and sources. Missing either archive blocks fresh startup. Deployment checks for both archives before replacing running services.
 
@@ -45,7 +45,7 @@ Browser storage and project files migrate old scenes to version 2. Migration pre
 
 ## Verification
 
-Unit and browser checks cover independent source path data, native size ratios, all six canvas dimensions, removed resize controls, legacy migration, custom-SVG restrictions, Undo, and vector export. The source-preparation/container checks use two independent **synthetic** archives, with different geometry and unrelated small-source filenames. These fixtures do not substitute for validating the private originals.
+Unit and browser checks cover independent source path data, native size ratios, all six canvas dimensions, removed resize controls, legacy migration, custom-SVG restrictions, Undo, and vector export. The source-preparation/container checks use two independent **synthetic** archives, with different geometry and the explicit small-source filename mapping. These fixtures do not substitute for validating the private originals.
 
 After preparing and serving the real originals, run:
 
