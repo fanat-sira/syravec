@@ -3,8 +3,8 @@ import { describe, it, expect } from "vitest";
 import {
   emptyScene,
   layer,
-  transform,
   arrange,
+  transform,
   type Asset,
   palettes,
 } from "./model";
@@ -84,4 +84,15 @@ describe("векторная сцена", () => {
       arrange(["a", "b", "c"], emptyScene()).layers.map((l) => l.assetId),
     ).toEqual(["a", "b", "c"]);
   });
+});
+
+it("automatic examples never rotate objects across variants", () => {
+  for (let seed = 0; seed < 8; seed++) {
+    const scene = arrange(
+      ["book-main", "lamp-main", "book-main"],
+      emptyScene(),
+      seed,
+    );
+    expect(scene.layers.every((l) => l.rotation === 0)).toBe(true);
+  }
 });

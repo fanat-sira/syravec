@@ -407,6 +407,11 @@ export default function App() {
         { scene: { ...data.scene, customPalette: snapshot.customPalette } },
         assets,
       );
+      // Generated angles are never applied; only manual editing controls rotation.
+      result = {
+        ...result,
+        layers: result.layers.map((l) => ({ ...l, rotation: 0 })),
+      };
       if (fromLayers) {
         const originals = new Map<string, Scene["layers"]>();
         for (const original of snapshot.layers) {
@@ -428,7 +433,6 @@ export default function App() {
             ...original,
             x: planned.x,
             y: planned.y,
-            rotation: planned.rotation,
             role: planned.role,
           };
         });

@@ -293,7 +293,7 @@ func (s *Server) template(r Request) Plan {
 		if strings.HasSuffix(id, "-background") {
 			role = "decor"
 		}
-		p.Items = append(p.Items, Item{AssetID: id, X: points[i][0], Y: points[i][1], Rotation: float64(positiveMod(i+r.Seed, 5)-2) * 5, Role: role, Depth: i})
+		p.Items = append(p.Items, Item{AssetID: id, X: points[i][0], Y: points[i][1], Rotation: 0, Role: role, Depth: i})
 	}
 
 	return p
@@ -338,7 +338,7 @@ func (s *Server) scene(p Plan, r Request) Scene {
 		if role == "" {
 			role = "support"
 		}
-		sc.Layers = append(sc.Layers, Layer{ID: fmt.Sprintf("layer-%d-%d", r.Seed, i), AssetID: item.AssetID, X: math.Max(-.2, math.Min(1.2, item.X)), Y: math.Max(-.2, math.Min(1.2, item.Y)), Rotation: math.Mod(item.Rotation, 360), Opacity: opacity, Visible: true, Locked: false, Role: role})
+		sc.Layers = append(sc.Layers, Layer{ID: fmt.Sprintf("layer-%d-%d", r.Seed, i), AssetID: item.AssetID, X: math.Max(-.2, math.Min(1.2, item.X)), Y: math.Max(-.2, math.Min(1.2, item.Y)), Rotation: 0, Opacity: opacity, Visible: true, Locked: false, Role: role})
 	}
 	return sc
 }

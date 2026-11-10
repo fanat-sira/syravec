@@ -22,7 +22,7 @@ The system message defines:
 - interpret free text as an illustration idea;
 - return `concept`, `layout`, and `items` in JSON;
 - in selection, preserve the exact number of occurrences of every requested asset ID;
-- use normalized positions, immutable native SVG dimensions, rotation, depth, opacity, and object roles;
+- use normalized positions, immutable native SVG dimensions, depth, opacity, and object roles;
 - respect the format and palette, and vary the arrangement across requests.
 
 The system message ends with catalog metadata: `id`, `name`, `description`, `variant`, `width`, `height`, `aspect`, `visualWeight`, and `centroid`. Concept receives the built-in catalog. Selection receives only the requested assets. Uploaded SVGs contribute their name and aspect ratio; the model does not see their rendered appearance or source paths.
@@ -65,12 +65,12 @@ The client expects one `choices` entry and reads its `message.content` as a JSON
   "items": [
     {"assetId":"coin-main","role":"focal","preferredX":0.5,"preferredY":0.5,"rotation":0,"depth":0,"opacity":1},
     {"assetId":"pen-main","role":"support","preferredX":0.52,"preferredY":0.4,"rotation":0,"depth":1,"opacity":1},
-    {"assetId":"pen-main","role":"support","preferredX":0.6,"preferredY":0.5,"rotation":90,"depth":2,"opacity":1}
+    {"assetId":"pen-main","role":"support","preferredX":0.6,"preferredY":0.5,"rotation":0,"depth":2,"opacity":1}
   ]
 }
 ```
 
-`layout` is one of `diagonal`, `cluster`, `arc`, `editorial`, or `layered`. Positions are normalized canvas centers. Objects retain their active original viewBox dimensions with one common factor of 1. There is no `relativeSize` or per-layer `scale` in the accepted contract. Objects may extend beyond the frame; Go does not shrink them to fit. Rotation is in degrees; depth runs back to front. Roles are `focal`, `support`, or `decor`.
+`layout` is one of `diagonal`, `cluster`, `arc`, `editorial`, or `layered`. Positions are normalized canvas centers. Objects retain their active original viewBox dimensions with one common factor of 1. There is no `relativeSize` or per-layer `scale` in the accepted contract. Objects may extend beyond the frame; Go does not shrink them to fit. Rotation must always be 0, including recomposition and briefs requesting tilt. Only manual editor actions can change it; recomposition preserves manually edited angles. Nonzero model angles are ignored by the server and client; depth runs back to front. Roles are `focal`, `support`, or `decor`.
 
 Go validates IDs, counts, numerical values, roles, and opacity. It optimizes positions without changing native sizes and returns a version-2 scene to the browser. For rearrangement, the browser applies layout transforms/order while preserving original layer IDs, visibility, opacity, and lock flags. The exported SVG is assembled locally from the original vectors, not received from the provider.
 

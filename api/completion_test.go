@@ -123,7 +123,7 @@ func TestStructuredPromptAndBoundedRepair(t *testing.T) {
 		var payload map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&payload)
 		encoded, _ := json.Marshal(payload)
-		for _, text := range []string{"knowledge", "visualWeight", "require_parameters", "role", "depth", "opacity", "variationId"} {
+		for _, text := range []string{"knowledge", "visualWeight", "require_parameters", "role", "depth", "opacity", "variationId", "rotation MUST always be 0", `"enum":[0]`} {
 			if !strings.Contains(string(encoded), text) {
 				t.Errorf("missing semantic or structured contract: %s", text)
 			}
@@ -206,5 +206,30 @@ func TestConfiguredKeyMakesLLMTheDefault(t *testing.T) {
 	data, _ = json.Marshal(r)
 	if w := call(s, string(data)); w.Code != 400 || calls != 1 {
 		t.Fatal("invalid palette reached provider")
+	}
+}
+
+func TestAutomaticLayoutsNeverRotate(t *testing.T) {
+	s := realCatalog(t)
+	for _, mode := range []string{"concept", "selection"} {
+		for _, preset := range []string{"square", "landscape", "portrait"} {
+			for seed := 0; seed < 8; seed++ {
+				r := req()
+				r.Mode, r.Prompt, r.CanvasPreset, r.Seed = mode, "knowledge", preset, seed
+				p := s.template(r)
+				for i := range p.Items {
+					if p.Items[i].Rotation != 0 {
+						t.Fatal("template tilted an object")
+					}
+					p.Items[i].Rotation = 73 // Even an uncooperative model must not rotate the scene
+				}
+				sc, _ := s.refine(s.scene(p, r))
+				for _, l := range sc.Layers {
+					if l.Rotation != 0 {
+						t.Fatal("model rotation reached scene refinement")
+					}
+				}
+			}
+		}
 	}
 }

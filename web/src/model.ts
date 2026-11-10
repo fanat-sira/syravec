@@ -196,7 +196,7 @@ export function arrange(
         : n <= 3
           ? points[i][1]
           : (Math.floor(i / cols) + 0.5) / rows,
-    rotation: (((i + seed) % 3) - 1) * 8,
+    rotation: 0,
   }));
   layers.sort(
     (a, b) =>

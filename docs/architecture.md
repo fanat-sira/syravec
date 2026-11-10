@@ -28,7 +28,7 @@ Requests include the current palette, custom color roles, illustration size, can
 
 The Layers action accepts the current canvas without filtering out single objects, copies, uploaded SVGs, hidden layers, or locked layers. Explicit rearrangement may move locked layers but preserves their lock flags. Custom SVG descriptors (ID, name, viewBox) extend only that request’s catalog; raw SVG markup is never sent to the server or model. The request-local planner still charges the root server’s shared quotas.
 
-The client and server validate the returned instance counts per asset ID. The client assigns each returned occurrence to a separate original layer in stable order, then applies positions, rotations, roles, and order to the existing layers. IDs, visibility, opacity, background, palette, and canvas format remain intact. One scene update records one Undo action. Errors, cancellation, and stale responses leave the scene unchanged.
+The client and server validate the returned instance counts per asset ID. The client assigns each returned occurrence to a separate original layer in stable order, then applies positions, roles, and order to the existing layers. IDs, manually edited rotations, visibility, opacity, background, palette, and canvas format remain intact. One scene update records one Undo action. Errors, cancellation, and stale responses leave the scene unchanged.
 
 The action identifies AI versus template output. Cancellation is available in both the inspector and Composer. Its footer stays outside the independently scrolling layer list.
 
@@ -47,3 +47,7 @@ The two sets are staged and audited together, then the manifest is atomically re
 Counters use hashed normalized IPs and an atomic file replacement in the `api-data` Docker volume. Storage errors block model dispatch. HTTP 429 includes `Retry-After` and the wait until all exceeded windows permit another call. The implementation coordinates one API process; independent replicas would need shared coordination.
 
 The container nginx resolves client addresses only through the configured trusted proxy network and overwrites `X-Real-IP`. The API uses that header only with `AI_TRUST_PROXY=true`; otherwise it uses `RemoteAddr`. The API port is not published by Compose.
+
+## manual rotation only
+
+Generation and template layouts always create layers with rotation 0. The model prompt forbids rotation and the structured schema restricts it to zero. The server discards any proposed angle before layout refinement; the client also discards angles in new generation responses. Recomposition retains each original instance’s manually edited rotation, including repeated asset IDs. Editor controls, undo/redo, saved projects and SVG export retain manual rotations.
